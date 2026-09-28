@@ -23,6 +23,11 @@ happened yet, the session is *armed but inert*: keys do nothing, no marker.
 | **right** *(default)* | `w` `a` `s` `d` | `,` | `.` | `/` | `r` / `f` |
 | **arrows** | arrow keys | `d` | `s` | `a` | PgUp / PgDn |
 
+Holding **either Shift** with a movement key multiplies the distance by
+`shiftScale` (8) — a coarse mode layered on top of whatever the speed model is
+already doing, so a shifted tap is 8px and a shifted sweep covers the screen
+almost immediately. Shift is a no-op for the buttons, Tab and scrolling.
+
 `Tab` cycles left → right → arrows. The active keymap is written to
 `$XDG_STATE_HOME/quickshell/by-shell/<id>/mousekeys.json` and restored on load;
 its name flashes under the cursor on entry and after each Tab.
@@ -49,7 +54,15 @@ sweep by holding, fine-tune by tapping. Any single press moves at least 1px, and
 any scroll press emits at least 1 detent, regardless of `h`.
 
 A direction change while at least one key stays down is one contiguous hold, so
-`h` carries across it.
+`h` carries across it. Shift multiplies the result by `shiftScale`, at both the
+1px floor and the integrated motion.
+
+Shift is not read as a separate key — it cannot be, with no keyboard grab. The
+submap binds a `SHIFT + <key>` variant of **every** key, so whether Shift was
+down arrives with the event itself. This is also why the variants exist for keys
+Shift does nothing for: a bind matches on an exact modifier mask, so an unbound
+`SHIFT + <key>` would fall straight through to the focused app and type a
+character instead.
 
 Scrolling uses the same `h` with `scrollMaxRate` (25 detents/s at full
 acceleration) in place of `k`, and auto-repeats while held.

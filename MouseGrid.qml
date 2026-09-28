@@ -47,6 +47,7 @@ Item {
 
   // ---- tunables -------------------------------------------------------------
   readonly property real baseStep: 1          // floor: any press moves at least this
+  readonly property real shiftScale: 8        // any Shift multiplies movement by this
   readonly property int sweepMs: 1500         // hold this long to cross one screen width
   readonly property real scrollMaxRate: 25    // detents/s at full acceleration
   readonly property int motionTickMs: 16      // how often held motion is integrated
@@ -139,6 +140,7 @@ Item {
   property int lastHoldCode: -1               // for chaining a press to its own first repeat
   property string activeKind: ""               // "move" | "scroll"
   property var moveDir: [0, 0]
+  property bool moveShift: false              // Shift was held on the latest movement event
   property int scrollSign: 0
   property real scrollAcc: 0                  // fractional detents awaiting emission
   property real sentX: -1                     // last position actually dispatched
@@ -155,6 +157,7 @@ Item {
       + " kmUp=" + (root.km ? root.km.up : "NOKM")
       + " idle=" + idleTimer.running + " long=" + longPressTimer.running
       + " moving=" + motionTimer.running + " held=" + root.holdConfirmed
+      + " shift=" + root.moveShift
       + " holdH=" + root.holdH.toFixed(2) + " v=" + root.speedFor(root.holdH).toFixed(0)
   }
 
@@ -189,6 +192,7 @@ Item {
     root.holdConfirmed = false
     root.scrollAcc = 0
     root.activeKind = ""
+    root.moveShift = false
     root.sentX = -1
     root.sentY = -1
     root.sticky = false
@@ -301,6 +305,11 @@ Item {
   }
 
   // ---- movement -------------------------------------------------------------
+  // Shift is not a separate key here: the submap binds a SHIFT + <key> variant
+  // of every key, so whether Shift was down arrives with the event itself.
+  // Hyprland's SHIFT modmask is side-agnostic, so either Shift works.
+  function shiftFactor() { return root.moveShift ? root.shiftScale : 1 }
+
   function moveBy(dir, px) {
     root.warp(root.curX + dir[0] * px, root.curY + dir[1] * px)
   }
@@ -348,7 +357,7 @@ Item {
     motionTimer.start()
   }
 
-  function handleKey(code) {
+  function handleKey(code, shifted) {
     if (!root.active) return        // still arming; the chord owns the keyboard
     var m = root.km
     var now = Date.now()
@@ -381,9 +390,10 @@ Item {
     if (!d) return
     root.pokeIdle()
     root.moveDir = d
+    root.moveShift = (shifted === true)
     if (repeat) { root.confirmHold(now, root.repeatGapMs); return }
     root.beginHold("move", code, now)
-    root.moveBy(d, root.baseStep)           // the one-pixel floor
+    root.moveBy(d, root.baseStep * root.shiftFactor())   // the floor, scaled
   }
 
   // ---- input ----------------------------------------------------------------
@@ -411,7 +421,23 @@ Item {
         appid: "mousegrid"
         name: "k" + modelData.n
         description: "Mouse keys " + modelData.n
-        onPressed: root.handleKey(modelData.c)
+        onPressed: root.handleKey(modelData.c, false)
+      }
+    }
+  }
+
+  // Every key also gets a SHIFT + variant, so Shift never falls through to the
+  // focused app and movement can scale by shiftScale. Shift is a no-op for
+  // buttons, Tab and scrolling.
+  Instantiator {
+    model: root.keyDefs
+    delegate: QtObject {
+      required property var modelData
+      readonly property var shortcut: GlobalShortcut {
+        appid: "mousegrid"
+        name: "k" + modelData.n + "-shift"
+        description: "Mouse keys Shift+" + modelData.n
+        onPressed: root.handleKey(modelData.c, true)
       }
     }
   }
@@ -513,7 +539,7 @@ Item {
         root.holdH = Math.min(root.sweepMs / 1000, root.holdH + dt)
         root.pokeIdle()
         if (root.activeKind === "move") {
-          root.moveBy(root.moveDir, root.speedFor(root.holdH) * dt)
+          root.moveBy(root.moveDir, root.speedFor(root.holdH) * dt * root.shiftFactor())
         } else if (root.activeKind === "scroll") {
           root.scrollAcc += root.scrollRateFor(root.holdH) * dt
           while (root.scrollAcc >= 1) { root.scroll(root.scrollSign); root.scrollAcc -= 1 }

@@ -49,6 +49,7 @@ Item {
   readonly property real baseStep: 8          // floor: any press moves at least this
   readonly property real edgeEpsilon: 0.5     // an edge this close counts as already there
   readonly property int fastTapMs: 150        // re-pressing a key quicker than this skitters
+  readonly property int scrollEndDetents: 120 // a fast scroll re-tap runs to the end of the view
   readonly property int sweepMs: 1500         // hold this long to cross one screen width
   readonly property real scrollMaxRate: 25    // detents/s at full acceleration
   readonly property int motionTickMs: 16      // how often held motion is integrated
@@ -139,10 +140,10 @@ Item {
   property real downUntil: 0                  // held as long as now() < this
   property string scrollSym: ""                // keysym polled while a scroll key is held
   property real lastTickAt: 0                 // for integrating against real elapsed time
+  property real prevGap: Infinity              // gap before the previous event, for fast-tap
   property int lastHoldCode: -1               // for chaining a press to its own first repeat
   property string activeKind: ""               // "move" | "scroll"
   property var moveDir: [0, 0]
-  property bool moveShift: false              // Shift was held on the latest movement event
   property var edgesX: []                     // vertical edges: { c, lo, hi }, screen-local
   property var edgesY: []                     // horizontal edges, likewise
   property int scrollSign: 0
@@ -161,7 +162,7 @@ Item {
       + " kmUp=" + (root.km ? root.km.up : "NOKM")
       + " idle=" + idleTimer.running + " long=" + longPressTimer.running
       + " moving=" + motionTimer.running + " held=" + root.holdConfirmed
-      + " shift=" + root.moveShift + " edges=" + root.edgesX.length + "/" + root.edgesY.length
+      + " edges=" + root.edgesX.length + "/" + root.edgesY.length
       + " holdH=" + root.holdH.toFixed(2) + " v=" + root.speedFor(root.holdH).toFixed(0)
   }
 
@@ -191,12 +192,12 @@ Item {
     root.screenH = scr.height
     root.lastKeyCode = -1
     root.lastHoldCode = -1
+    root.prevGap = Infinity
     root.lastKeyAt = 0
     root.holdH = 0
     root.holdConfirmed = false
     root.scrollAcc = 0
     root.activeKind = ""
-    root.moveShift = false
     root.sentX = -1
     root.sentY = -1
     root.sticky = false
@@ -344,7 +345,7 @@ Item {
   }
 
   // Nearest edge strictly ahead of `from` along `sign`, level with `cross`.
-  // maxDist <= 0 means unbounded, which is what Shift uses.
+  // maxDist <= 0 means unbounded, which is what a fast re-tap uses.
   function nextEdge(list, from, cross, sign, maxDist) {
     var bestC = NaN, bestD = Infinity
     for (var i = 0; i < list.length; i++) {
@@ -358,14 +359,12 @@ Item {
     return bestC
   }
 
-  // Enter a sweep in `dir` carrying speed `h`, without waiting for the new
-  // key's first repeat. Two callers need this:
-  //   - a new direction pressed mid-sweep, which must take over without the
-  //     motion stopping and without losing the acceleration already built up
-  //   - a shifted press, which should sweep at once rather than ramp
-  // Both have the same problem: the key that will sustain the sweep does not
-  // repeat for input:repeat_delay (250ms), so downUntil has to bridge that gap
-  // or motion lapses after repeatGapMs.
+  // Enter a sweep in `dir` carrying speed `h`, without waiting for the new key's
+  // first repeat. Used when a new direction is pressed mid-sweep, which must
+  // take over without the motion stopping and without losing the acceleration
+  // already built up. The key that will sustain the sweep does not repeat for
+  // input:repeat_delay (250ms), so downUntil has to bridge that gap or motion
+  // lapses after repeatGapMs.
   function startSweep(code, now, h) {
     root.activeKind = "move"
     root.lastHoldCode = code
@@ -442,13 +441,25 @@ Item {
     motionTimer.start()
   }
 
-  function handleKey(code, shifted) {
+  function handleKey(code) {
     if (!root.active) return        // still arming; the chord owns the keyboard
     var m = root.km
     var now = Date.now()
     var sameKey = (code === root.lastKeyCode)
     var gap = sameKey ? (now - root.lastKeyAt) : Infinity
     var repeat = sameKey && (gap <= root.repeatGapMs)
+    // Re-pressing the same key quicker than fastTapMs means "go all the way":
+    // the next edge for movement, the end of the view for scrolling.
+    //
+    // The `prevGap` term is load-bearing. Auto-repeat normally arrives every
+    // 25-34ms and is caught by `repeat` above, but a repeat delayed under load
+    // lands in the fast-tap band and would teleport a sweeping cursor to an edge
+    // — measured, an identical 0.75s sweep covering 427px, 557px, then 746px
+    // (exactly a window edge). A deliberate re-press can only follow a release,
+    // so it is never preceded by another event one repeat-interval earlier;
+    // a delayed repeat always is.
+    var fastTap = sameKey && gap < root.fastTapMs && root.prevGap > root.repeatGapMs
+    root.prevGap = gap
     root.lastKeyAt = now
     root.lastKeyCode = code
 
@@ -466,6 +477,14 @@ Item {
       root.pokeIdle()
       root.scrollSign = (code === m.su) ? 1 : -1
       if (repeat) return                    // a repeat may still slip in; polling owns this
+      if (fastTap) {
+        // Enough detents in one event to carry any ordinary view to its end.
+        scrollPoll.stop()
+        root.holdConfirmed = false
+        motionTimer.stop()
+        root.scroll(root.scrollSign * root.scrollEndDetents)
+        return
+      }
       root.scrollSym = root.keySyms[code] || ""
       root.beginHold("scroll", code, now)
       root.scroll(root.scrollSign)          // the one-detent floor
@@ -477,24 +496,9 @@ Item {
     if (!d) return
     root.pokeIdle()
     root.moveDir = d
-    root.moveShift = (shifted === true)
     root.collectEdges()                 // cheap, and keeps up with moved windows
-    if (repeat && !root.moveShift) { root.confirmHold(now, root.repeatGapMs); return }
+    if (repeat) { root.confirmHold(now, root.repeatGapMs); return }
 
-    if (root.moveShift) {
-      // Skitter: each event jumps exactly one edge. Deliberately no continuous
-      // motion — at tick rate that would blow through every edge on screen in
-      // about a tenth of a second.
-      root.holdConfirmed = false
-      motionTimer.stop()
-      root.moveStep(d, 0, true)
-      return
-    }
-    // Re-pressing the same direction quicker than fastTapMs skitters too, so the
-    // edge walk is reachable without a modifier. Auto-repeat also arrives on the
-    // same key inside that window, but it was classified as `repeat` above and
-    // took the branch before this one — a held key sweeps, it does not skitter.
-    var fastTap = sameKey && gap < root.fastTapMs
     if (root.holdConfirmed && root.activeKind === "move") {
       root.startSweep(code, now, root.holdH)              // hand the speed over
     } else {
@@ -528,26 +532,11 @@ Item {
         appid: "mousekeys"
         name: "k" + modelData.n
         description: "Mouse keys " + modelData.n
-        onPressed: root.handleKey(modelData.c, false)
+        onPressed: root.handleKey(modelData.c)
       }
     }
   }
 
-  // Every key also gets a SHIFT + variant, so Shift never falls through to the
-  // focused app, and Shift can select edge snapping. Shift is a no-op for
-  // buttons, Tab and scrolling.
-  Instantiator {
-    model: root.keyDefs
-    delegate: QtObject {
-      required property var modelData
-      readonly property var shortcut: GlobalShortcut {
-        appid: "mousekeys"
-        name: "k" + modelData.n + "-shift"
-        description: "Mouse keys Shift+" + modelData.n
-        onPressed: root.handleKey(modelData.c, true)
-      }
-    }
-  }
 
   // ---- triggers ------------------------------------------------------------------------
   // Bound in ~/.config/hypr/bindings.lua via hl.dsp.global("mousekeys:<name>").

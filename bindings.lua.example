@@ -22,20 +22,19 @@ hl.define_submap("mousekeys", function()
   -- Movement and scroll keys repeat: the plugin rides Hyprland's key repeat
   -- instead of waiting for a release, because a `release = true` bind never
   -- fires when it dispatches hl.dsp.global.
-  -- Each key is bound twice: plain, and with SHIFT. A bind matches on an exact
-  -- modifier mask, so without the SHIFT variant a shifted key would fall
-  -- through to the focused app instead of reaching the plugin. Shift scales
-  -- movement by shiftScale; it is a no-op for buttons, Tab and scrolling.
+  -- ignore_mods so one bind per key matches whatever modifiers are held. That
+  -- matters twice over: the key still reaches the plugin instead of falling
+  -- through and typing a character, and the modifiers you are holding ride along
+  -- on the pointer events the plugin injects — so Shift+scroll is horizontal and
+  -- Ctrl+scroll zooms, in whatever app is underneath.
   for _, k in ipairs({ "I", "J", "K", "L", "Y", "H",
                        "W", "A", "S", "D", "R", "F",
                        "UP", "DOWN", "LEFT", "RIGHT", "Prior", "Next" }) do
-    hl.bind(k, hl.dsp.global("mousekeys:k" .. k), { repeating = true })
-    hl.bind("SHIFT + " .. k, hl.dsp.global("mousekeys:k" .. k .. "-shift"), { repeating = true })
+    hl.bind(k, hl.dsp.global("mousekeys:k" .. k), { repeating = true, ignore_mods = true })
   end
 
   -- Buttons and the keymap switch fire once per press.
   for _, k in ipairs({ "C", "X", "Z", "comma", "period", "slash", "TAB" }) do
-    hl.bind(k, hl.dsp.global("mousekeys:k" .. k))
-    hl.bind("SHIFT + " .. k, hl.dsp.global("mousekeys:k" .. k .. "-shift"))
+    hl.bind(k, hl.dsp.global("mousekeys:k" .. k), { ignore_mods = true })
   end
 end)

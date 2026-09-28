@@ -23,9 +23,16 @@ happened yet, the session is *armed but inert*: keys do nothing, no marker.
 | **right** *(default)* | `w` `a` `s` `d` | `,` | `.` | `/` | `r` / `f` |
 | **arrows** | arrow keys | `d` | `s` | `a` | PgUp / PgDn |
 
-Holding **either Shift** with a movement key turns it into an **edge skitter**:
-each press jumps straight to the next window edge in that direction, however far
-away it is. Shift is a no-op for the buttons, Tab and scrolling.
+**Shift and Ctrl are yours, not the plugin's.** Every key is bound with
+`ignore_mods`, so it reaches the plugin whatever modifiers are held — and those
+modifiers then ride along on the pointer events the plugin injects. So
+`Shift`+scroll is horizontal scrolling and `Ctrl`+scroll is zoom, in whatever app
+is underneath, and `Shift`+click extends a selection. Measured: the client sees
+`mods=33554432` (Shift) and `mods=67108864` (Ctrl) on the injected events.
+
+**Re-tapping a scroll key within `fastTapMs` (150ms)** sends
+`scrollEndDetents` (120) notches in one event, which carries an ordinary view to
+its beginning or end.
 
 `Tab` cycles left → right → arrows. The active keymap is written to
 `$XDG_STATE_HOME/quickshell/by-shell/<id>/mousekeys.json` and restored on load;
@@ -75,9 +82,8 @@ ahead of the cursor in that direction:
 
 | | search range | effect |
 |---|---|---|
-| **unshifted, single press** | within the distance this press would travel | lands on an edge it would otherwise step over; otherwise moves the full distance |
-| **unshifted, same key re-pressed within `fastTapMs` (150ms)** | unbounded | skitters — the edge walk without reaching for a modifier |
-| **Shift** | unbounded | skitters |
+| **single press** | within the distance this press would travel | lands on an edge it would otherwise step over; otherwise moves the full distance |
+| **same key re-pressed within `fastTapMs` (150ms)** | unbounded | skitters to the next edge however far away |
 
 Edges come from Quickshell's Hyprland toplevels, whose `lastIpcObject` carries
 `at`/`size` **in process** — no subprocess, so the set is rebuilt on every
@@ -95,10 +101,18 @@ it, rather than pinning to the first one it meets.
 
 Hyprland's key repeat also arrives on the same key well inside `fastTapMs`, so
 "tapped again quickly" and "still held down" have to be told apart or a held key
-would skitter to the screen edge instead of sweeping. The existing repeat
-classification does it: anything within `repeatGapMs` (55ms) is a repeat and
-drives the sweep, so only the 55–150ms band counts as fast tapping. Two
-consequences:
+would skitter to the screen edge instead of sweeping. Two things separate them:
+
+- Anything within `repeatGapMs` (55ms) is classified as a repeat and drives the
+  sweep, so only the 55–150ms band can count as fast tapping.
+- A repeat **delayed under load** still lands in that band, so the event before
+  it is checked too (`prevGap`). A deliberate re-press can only follow a release,
+  so it is never preceded by another event one repeat-interval earlier; a delayed
+  repeat always is. Without this an identical 0.75s sweep measured 427px, 557px
+  and then 746px — that last one exactly a window edge, the cursor teleporting
+  mid-sweep.
+
+Consequences:
 
 - A **held** key never skitters. Its first repeat lands ~250ms out (outside
   `fastTapMs`) and the rest arrive 25–34ms apart (inside `repeatGapMs`).

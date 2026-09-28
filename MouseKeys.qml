@@ -57,6 +57,7 @@ Item {
   readonly property int scrollPollMs: 80      // how often we ask if a scroll key is still down
   readonly property int scrollGapMs: 150      // scroll: grace between polls before calling it up
   readonly property int holdChainMs: 400      // same key again within this => same hold, keep its clock
+  readonly property int takeoverGraceMs: 320  // bridges a new key's repeat delay so motion never lapses
   readonly property int idleMs: 2000          // short-press session idles out; 0 disables
   readonly property int chordLongPressMs: 500 // chord held this long latches instead
   readonly property int armPollMs: 70         // how often we check if the chord is still down
@@ -308,7 +309,30 @@ Item {
   // Shift is not a separate key here: the submap binds a SHIFT + <key> variant
   // of every key, so whether Shift was down arrives with the event itself.
   // Hyprland's SHIFT modmask is side-agnostic, so either Shift works.
+  //
+  // It scales the discrete per-press step. It does NOT also scale the held
+  // sweep — Shift already starts that at top speed (see startSweep), and
+  // multiplying a maxed ramp by 8 would cross the screen in under 100ms.
   function shiftFactor() { return root.moveShift ? root.shiftScale : 1 }
+
+  // Enter a sweep in `dir` carrying speed `h`, without waiting for the new
+  // key's first repeat. Two callers need this:
+  //   - a new direction pressed mid-sweep, which must take over without the
+  //     motion stopping and without losing the acceleration already built up
+  //   - a shifted press, which should sweep at once rather than ramp
+  // Both have the same problem: the key that will sustain the sweep does not
+  // repeat for input:repeat_delay (250ms), so downUntil has to bridge that gap
+  // or motion lapses after repeatGapMs.
+  function startSweep(code, now, h) {
+    root.activeKind = "move"
+    root.lastHoldCode = code
+    root.holdH = Math.min(root.sweepMs / 1000, h)
+    root.holdPressAt = now - root.holdH * 1000   // keep holdH ~ elapsed invariant
+    root.holdConfirmed = true
+    root.downUntil = now + root.takeoverGraceMs
+    root.lastTickAt = now
+    motionTimer.start()
+  }
 
   function moveBy(dir, px) {
     root.warp(root.curX + dir[0] * px, root.curY + dir[1] * px)
@@ -392,8 +416,15 @@ Item {
     root.moveDir = d
     root.moveShift = (shifted === true)
     if (repeat) { root.confirmHold(now, root.repeatGapMs); return }
-    root.beginHold("move", code, now)
-    root.moveBy(d, root.baseStep * root.shiftFactor())   // the floor, scaled
+
+    if (root.moveShift) {
+      root.startSweep(code, now, root.sweepMs / 1000)     // shift: sweep at once
+    } else if (root.holdConfirmed && root.activeKind === "move") {
+      root.startSweep(code, now, root.holdH)              // hand the speed over
+    } else {
+      root.beginHold("move", code, now)
+    }
+    root.moveBy(d, root.baseStep * root.shiftFactor())     // the floor, scaled
   }
 
   // ---- input ----------------------------------------------------------------
@@ -539,7 +570,7 @@ Item {
         root.holdH = Math.min(root.sweepMs / 1000, root.holdH + dt)
         root.pokeIdle()
         if (root.activeKind === "move") {
-          root.moveBy(root.moveDir, root.speedFor(root.holdH) * dt * root.shiftFactor())
+          root.moveBy(root.moveDir, root.speedFor(root.holdH) * dt)
         } else if (root.activeKind === "scroll") {
           root.scrollAcc += root.scrollRateFor(root.holdH) * dt
           while (root.scrollAcc >= 1) { root.scroll(root.scrollSign); root.scrollAcc -= 1 }

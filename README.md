@@ -23,10 +23,10 @@ happened yet, the session is *armed but inert*: keys do nothing, no marker.
 | **right** *(default)* | `w` `a` `s` `d` | `,` | `.` | `/` | `r` / `f` |
 | **arrows** | arrow keys | `d` | `s` | `a` | PgUp / PgDn |
 
-Holding **either Shift** with a movement key multiplies the distance by
-`shiftScale` (8) — a coarse mode layered on top of whatever the speed model is
-already doing, so a shifted tap is 8px and a shifted sweep covers the screen
-almost immediately. Shift is a no-op for the buttons, Tab and scrolling.
+Holding **either Shift** with a movement key does two things: a discrete press
+moves `shiftScale` (8) pixels instead of 1, and a held press **sweeps at once**
+rather than waiting out the acceleration ramp. Shift is a no-op for the buttons,
+Tab and scrolling.
 
 `Tab` cycles left → right → arrows. The active keymap is written to
 `$XDG_STATE_HOME/quickshell/by-shell/<id>/mousekeys.json` and restored on load;
@@ -53,9 +53,25 @@ ramp instead of from rest. That is what lets **tap frequency modulate speed**:
 sweep by holding, fine-tune by tapping. Any single press moves at least 1px, and
 any scroll press emits at least 1 detent, regardless of `h`.
 
-A direction change while at least one key stays down is one contiguous hold, so
-`h` carries across it. Shift multiplies the result by `shiftScale`, at both the
-1px floor and the integrated motion.
+**A new direction pressed mid-sweep takes over without the motion stopping**, and
+carries the accumulated `h` with it — you can steer a sweep rather than having to
+restart it. This needs an explicit bridge: the key that will sustain the sweep
+does not repeat for 250ms, so without one the motion would lapse after
+`repeatGapMs` and the speed would bleed away while waiting.
+
+**Shift starts a sweep at full `h` immediately**, skipping the ramp. It scales
+the discrete per-press step by `shiftScale` but deliberately does *not* also
+scale the held sweep — that ramp is already maxed, and multiplying it by 8 would
+cross the screen in under 100ms.
+
+Measured:
+
+```
+unshifted 'd', 150ms in        1px     the ramp wait, unchanged
+SHIFT + 'd',   150ms in      370px     sweeping at once
+takeover, both keys held     255px     in 180ms, speed carried over
+takeover, old key released   349px     in 180ms, ~1939px/s
+```
 
 Shift is not read as a separate key — it cannot be, with no keyboard grab. The
 submap binds a `SHIFT + <key>` variant of **every** key, so whether Shift was

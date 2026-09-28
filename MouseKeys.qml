@@ -46,7 +46,7 @@ Item {
   property var manifest: null
 
   // ---- tunables -------------------------------------------------------------
-  readonly property real baseStep: 1          // floor: any press moves at least this
+  readonly property real baseStep: 8          // floor: any press moves at least this
   readonly property real shiftScale: 8        // any Shift multiplies movement by this
   readonly property int sweepMs: 1500         // hold this long to cross one screen width
   readonly property real scrollMaxRate: 25    // detents/s at full acceleration

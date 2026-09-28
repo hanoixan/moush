@@ -24,7 +24,7 @@ happened yet, the session is *armed but inert*: keys do nothing, no marker.
 | **arrows** | arrow keys | `d` | `s` | `a` | PgUp / PgDn |
 
 Holding **either Shift** with a movement key does two things: a discrete press
-moves `shiftScale` (8) pixels instead of 1, and a held press **sweeps at once**
+moves `shiftScale` (8) times `baseStep`, and a held press **sweeps at once**
 rather than waiting out the acceleration ramp. Shift is a no-op for the buttons,
 Tab and scrolling.
 
@@ -50,8 +50,10 @@ screen width**, and a hold of `t` seconds reaches `t/T` of top speed — so a 0.
 hold reaches 1/6 the speed of a 1.5s one. `h` grows while a direction key is down
 and recedes when none is, so releasing and re-pressing resumes part-way up the
 ramp instead of from rest. That is what lets **tap frequency modulate speed**:
-sweep by holding, fine-tune by tapping. Any single press moves at least 1px, and
-any scroll press emits at least 1 detent, regardless of `h`.
+sweep by holding, fine-tune by tapping. Any single press moves at least
+`baseStep` (8px), and any scroll press emits at least 1 detent, regardless of
+`h`. 8px is therefore the finest positioning step — drop `baseStep` to 1 if you
+want pixel-exact placement back.
 
 **A new direction pressed mid-sweep takes over without the motion stopping**, and
 carries the accumulated `h` with it — you can steer a sweep rather than having to
@@ -67,7 +69,7 @@ cross the screen in under 100ms.
 Measured:
 
 ```
-unshifted 'd', 150ms in        1px     the ramp wait, unchanged
+unshifted 'd', 150ms in        8px     the ramp wait, unchanged
 SHIFT + 'd',   150ms in      370px     sweeping at once
 takeover, both keys held     255px     in 180ms, speed carried over
 takeover, old key released   349px     in 180ms, ~1939px/s
@@ -86,7 +88,7 @@ acceleration) in place of `k`, and auto-repeats while held.
 Measured:
 
 ```
-movement   tap        1px          scroll   tap      1 detent
+movement   tap        8px          scroll   tap      1 detent
            hold 0.4s   92px                 hold 0.6s   4 detents
            hold 0.75s 398px  (ideal 384)    hold 1.2s  13 detents
            hold 1.0s  726px  (ideal 683)
@@ -100,8 +102,9 @@ of the dead zone described next.
 
 - **Presses shorter than `input:repeat_delay` (250ms) are indistinguishable.**
   With no key release available, the only proof a key is *held* is its first
-  repeat, which lands 250ms in. So every press under 250ms is a 1px tap and the
-  "0.25s taps give 1/6 speed" case degrades to "taps give 1px each" — frequency
+  repeat, which lands 250ms in. So every press under 250ms is a `baseStep` tap
+  and the "0.25s taps give 1/6 speed" case degrades to "taps give one step
+  each" — frequency
   still modulates speed, duration below 250ms does not. Getting that back needs a
   helper reading `/dev/input` directly.
 - **A wheel event cancels Hyprland's key repeat.** Injecting a scroll through

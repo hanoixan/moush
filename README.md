@@ -151,26 +151,27 @@ one is enough.
 
 ## Install
 
-1. Rename the plugin id in `manifest.json` from `local.mousegrid` to
-   `<yourname>.mousekeys`, and rename the folder to match. The `mousegrid:`
-   prefix in the bindings is the GlobalShortcut **appid**, set in
-   `MouseGrid.qml` and independent of the plugin id — change both or neither.
-2. Copy the folder to `~/.config/omarchy/plugins/<id>/`.
+1. Clone into `~/.config/omarchy/plugins/mousekeys/` — the directory name must
+   match the manifest `id`, which is how `omarchy plugin add` names its clone.
+   Note the GlobalShortcut **appid** (also `mousekeys`) is a separate identifier
+   from the plugin id, and every binding below references it — change one
+   without the other and all the bindings silently stop working.
+2. Copy the folder to `~/.config/omarchy/plugins/mousekeys/`.
 3. Check it, then load and enable it:
 
    ```bash
-   omarchy plugin validate ~/.config/omarchy/plugins/<id>
+   omarchy plugin validate ~/.config/omarchy/plugins/mousekeys
    omarchy-shell shell rescanPlugins
-   omarchy plugin enable <id>
+   omarchy plugin enable mousekeys
    ```
 
    `validate` only checks `manifest.json` — it never loads the QML. Set
-   `debug: true` in `MouseGrid.qml` to trace keys (the log is at
+   `debug: true` in `MouseKeys.qml` to trace keys (the log is at
    `/run/user/$UID/quickshell/by-id/<id>/log.qslog`, read it with
    `quickshell log <file>`), or ask the running plugin for its state:
 
    ```bash
-   omarchy-shell shell call <id> probe ""
+   omarchy-shell shell call mousekeys probe ""
    # opened=true active=true sticky=false keymap=right moving=false bonus=0.0
    ```
 
@@ -183,7 +184,7 @@ Saving files under `~/.config/omarchy/plugins/` hot-reloads most edits, but a
 A latched session has no timeout and no Escape, so **Super + Left Alt is its
 only exit**. `CTRL + ALT + Escape` restores your keybindings if the shell dies
 holding the submap, but the overlay keeps its surface until
-`omarchy-shell shell hide <id>`.
+`omarchy-shell shell hide mousekeys`.
 
 ## Known conflict
 

@@ -1,15 +1,15 @@
 {
   "schemaVersion": 1,
-  "id": "local.mousegrid",
+  "id": "mousekeys",
   "name": "Mouse Keys",
   "version": "0.1.0",
-  "author": "You",
+  "author": "hanoixan",
   "description": "Keyboard-driven pointer control: move, click and scroll without a mouse",
   "kinds": [
     "overlay"
   ],
   "keepLoaded": true,
   "entryPoints": {
-    "overlay": "MouseGrid.qml"
+    "overlay": "MouseKeys.qml"
   }
 }

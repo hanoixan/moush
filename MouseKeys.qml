@@ -206,7 +206,7 @@ Item {
     // the wheel events we synthesize don't reach SUPER+scroll bindings.
     // The submap is the input mechanism now, not just a shield: every movement,
     // button and scroll key is bound inside it.
-    root.hypr('hl.dsp.submap("mousegrid")')
+    root.hypr('hl.dsp.submap("mousekeys")')
     root.opened = true
   }
 
@@ -418,7 +418,7 @@ Item {
     delegate: QtObject {
       required property var modelData
       readonly property var shortcut: GlobalShortcut {
-        appid: "mousegrid"
+        appid: "mousekeys"
         name: "k" + modelData.n
         description: "Mouse keys " + modelData.n
         onPressed: root.handleKey(modelData.c, false)
@@ -434,7 +434,7 @@ Item {
     delegate: QtObject {
       required property var modelData
       readonly property var shortcut: GlobalShortcut {
-        appid: "mousegrid"
+        appid: "mousekeys"
         name: "k" + modelData.n + "-shift"
         description: "Mouse keys Shift+" + modelData.n
         onPressed: root.handleKey(modelData.c, true)
@@ -443,20 +443,20 @@ Item {
   }
 
   // ---- triggers ------------------------------------------------------------------------
-  // Bound in ~/.config/hypr/bindings.lua via hl.dsp.global("mousegrid:<name>").
+  // Bound in ~/.config/hypr/bindings.lua via hl.dsp.global("mousekeys:<name>").
   // One bind per press order, because Hyprland only matches the bind whose
   // final key completes it.
   GlobalShortcut {
-    appid: "mousegrid"
-    name: "open-light-alt"
+    appid: "mousekeys"
+    name: "toggle-alt"
     description: "Mouse keys (Super, then Left Alt)"
     onPressed: root.chordPressed()
     onReleased: root.chordReleased()
   }
 
   GlobalShortcut {
-    appid: "mousegrid"
-    name: "open-light-super"
+    appid: "mousekeys"
+    name: "toggle-super"
     description: "Mouse keys (Left Alt, then Super)"
     onPressed: root.chordPressed()
     onReleased: root.chordReleased()
@@ -621,7 +621,7 @@ Item {
     // Visual-only surface: keep the input region empty so it never blocks a click.
     mask: Region {}
 
-    WlrLayershell.namespace: "mousegrid"
+    WlrLayershell.namespace: "mousekeys"
     WlrLayershell.layer: WlrLayer.Overlay
     // Never take keyboard focus: any focus mode either swallows the clicks we
     // inject (Exclusive) or stops delivering keys after the first one

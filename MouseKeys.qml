@@ -48,6 +48,7 @@ Item {
   // ---- tunables -------------------------------------------------------------
   readonly property real baseStep: 8          // floor: any press moves at least this
   readonly property real edgeEpsilon: 0.5     // an edge this close counts as already there
+  readonly property int fastTapMs: 150        // re-pressing a key quicker than this skitters
   readonly property int sweepMs: 1500         // hold this long to cross one screen width
   readonly property real scrollMaxRate: 25    // detents/s at full acceleration
   readonly property int motionTickMs: 16      // how often held motion is integrated
@@ -377,24 +378,24 @@ Item {
   }
 
   // Move `px` along `dir`, but land on a window edge if one lies in the way.
-  // Unshifted, only edges within the travel distance count, so movement is
-  // magnetic without being teleportive. Shifted, the search is unbounded and the
-  // cursor lands on the next edge however far off it is — that is the skitter.
-  function moveStep(dir, px) {
+  // Bounded, only edges within the travel distance count, so movement is
+  // magnetic without being teleportive. Unbounded, the cursor lands on the next
+  // edge however far off it is — that is the skitter.
+  function moveStep(dir, px, unbounded) {
     var horiz = dir[0] !== 0
     var sign = horiz ? dir[0] : dir[1]
     var from = horiz ? root.curX : root.curY
     var cross = horiz ? root.curY : root.curX
     var e = root.nextEdge(horiz ? root.edgesX : root.edgesY, from, cross, sign,
-                          root.moveShift ? 0 : px)
+                          unbounded ? 0 : px)
     if (!isNaN(e)) {
       if (horiz) root.warp(e, root.curY)
       else root.warp(root.curX, e)
       return
     }
-    // Shift only ever lands on edges; the screen is in the list, so running out
-    // means there is nowhere further to go.
-    if (root.moveShift) return
+    // An unbounded step only ever lands on edges; the screen is in the list, so
+    // running out means there is nowhere further to go.
+    if (unbounded) return
     root.warp(root.curX + dir[0] * px, root.curY + dir[1] * px)
   }
 
@@ -445,7 +446,9 @@ Item {
     if (!root.active) return        // still arming; the chord owns the keyboard
     var m = root.km
     var now = Date.now()
-    var repeat = (code === root.lastKeyCode) && (now - root.lastKeyAt <= root.repeatGapMs)
+    var sameKey = (code === root.lastKeyCode)
+    var gap = sameKey ? (now - root.lastKeyAt) : Infinity
+    var repeat = sameKey && (gap <= root.repeatGapMs)
     root.lastKeyAt = now
     root.lastKeyCode = code
 
@@ -484,15 +487,20 @@ Item {
       // about a tenth of a second.
       root.holdConfirmed = false
       motionTimer.stop()
-      root.moveStep(d, 0)
+      root.moveStep(d, 0, true)
       return
     }
+    // Re-pressing the same direction quicker than fastTapMs skitters too, so the
+    // edge walk is reachable without a modifier. Auto-repeat also arrives on the
+    // same key inside that window, but it was classified as `repeat` above and
+    // took the branch before this one — a held key sweeps, it does not skitter.
+    var fastTap = sameKey && gap < root.fastTapMs
     if (root.holdConfirmed && root.activeKind === "move") {
       root.startSweep(code, now, root.holdH)              // hand the speed over
     } else {
       root.beginHold("move", code, now)
     }
-    root.moveStep(d, root.baseStep)
+    root.moveStep(d, root.baseStep, fastTap)
   }
 
   // ---- input ----------------------------------------------------------------
@@ -638,7 +646,7 @@ Item {
         root.holdH = Math.min(root.sweepMs / 1000, root.holdH + dt)
         root.pokeIdle()
         if (root.activeKind === "move") {
-          root.moveStep(root.moveDir, root.speedFor(root.holdH) * dt)
+          root.moveStep(root.moveDir, root.speedFor(root.holdH) * dt, false)
         } else if (root.activeKind === "scroll") {
           root.scrollAcc += root.scrollRateFor(root.holdH) * dt
           while (root.scrollAcc >= 1) { root.scroll(root.scrollSign); root.scrollAcc -= 1 }

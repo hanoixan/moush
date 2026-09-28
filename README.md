@@ -75,8 +75,9 @@ ahead of the cursor in that direction:
 
 | | search range | effect |
 |---|---|---|
-| **unshifted** | within the distance this press would travel | lands on an edge it would otherwise step over; otherwise moves the full distance |
-| **Shift** | unbounded | jumps to the next edge however far away — walk the screen edge by edge |
+| **unshifted, single press** | within the distance this press would travel | lands on an edge it would otherwise step over; otherwise moves the full distance |
+| **unshifted, same key re-pressed within `fastTapMs` (150ms)** | unbounded | skitters — the edge walk without reaching for a modifier |
+| **Shift** | unbounded | skitters |
 
 Edges come from Quickshell's Hyprland toplevels, whose `lastIpcObject` carries
 `at`/`size` **in process** — no subprocess, so the set is rebuilt on every
@@ -89,6 +90,31 @@ to snap to and Shift never leaves you with nowhere to go.
 Candidates must be *strictly* ahead (`edgeEpsilon`), which is what stops a sweep
 sticking: a held key snaps onto each edge as it passes and then carries on past
 it, rather than pinning to the first one it meets.
+
+#### Fast tapping and auto-repeat share a window
+
+Hyprland's key repeat also arrives on the same key well inside `fastTapMs`, so
+"tapped again quickly" and "still held down" have to be told apart or a held key
+would skitter to the screen edge instead of sweeping. The existing repeat
+classification does it: anything within `repeatGapMs` (55ms) is a repeat and
+drives the sweep, so only the 55–150ms band counts as fast tapping. Two
+consequences:
+
+- A **held** key never skitters. Its first repeat lands ~250ms out (outside
+  `fastTapMs`) and the rest arrive 25–34ms apart (inside `repeatGapMs`).
+- Tapping **faster than 55ms** is indistinguishable from auto-repeat, so it
+  sweeps rather than skitters. That is the floor, and it cannot be lifted without
+  key-release events, which this input path does not get.
+
+Measured from `x=0` against the same three windows:
+
+```
+3 taps @200ms apart  -> x=20    8, 12 (snapped), 20 — ordinary stepping
+4 taps @100ms apart  -> x=760   8, then skitter 12 -> 746 -> 760
+4 taps @70ms  apart  -> x=760   same
+hold 0.75s           -> x=407   sweeps, does not skitter
+5 taps @40ms apart   -> x=35    read as auto-repeat, so it sweeps
+```
 
 Measured against a workspace with windows at `x:12..746`, `x:760..1489` and
 `x:1503..2237` on a 1536px screen:

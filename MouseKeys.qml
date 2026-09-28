@@ -47,7 +47,7 @@ Item {
 
   // ---- tunables -------------------------------------------------------------
   readonly property real baseStep: 8          // floor: any press moves at least this
-  readonly property real shiftScale: 8        // any Shift multiplies movement by this
+  readonly property real edgeEpsilon: 0.5     // an edge this close counts as already there
   readonly property int sweepMs: 1500         // hold this long to cross one screen width
   readonly property real scrollMaxRate: 25    // detents/s at full acceleration
   readonly property int motionTickMs: 16      // how often held motion is integrated
@@ -142,6 +142,8 @@ Item {
   property string activeKind: ""               // "move" | "scroll"
   property var moveDir: [0, 0]
   property bool moveShift: false              // Shift was held on the latest movement event
+  property var edgesX: []                     // vertical edges: { c, lo, hi }, screen-local
+  property var edgesY: []                     // horizontal edges, likewise
   property int scrollSign: 0
   property real scrollAcc: 0                  // fractional detents awaiting emission
   property real sentX: -1                     // last position actually dispatched
@@ -158,7 +160,7 @@ Item {
       + " kmUp=" + (root.km ? root.km.up : "NOKM")
       + " idle=" + idleTimer.running + " long=" + longPressTimer.running
       + " moving=" + motionTimer.running + " held=" + root.holdConfirmed
-      + " shift=" + root.moveShift
+      + " shift=" + root.moveShift + " edges=" + root.edgesX.length + "/" + root.edgesY.length
       + " holdH=" + root.holdH.toFixed(2) + " v=" + root.speedFor(root.holdH).toFixed(0)
   }
 
@@ -202,6 +204,8 @@ Item {
     root.curX = scr.width / 2
     root.curY = scr.height / 2
     cursorProc.running = true
+    Hyprland.refreshToplevels()
+    root.collectEdges()
 
     // Empty submap so Omarchy's own bindings can't eat movement keys, and so
     // the wheel events we synthesize don't reach SUPER+scroll bindings.
@@ -306,14 +310,52 @@ Item {
   }
 
   // ---- movement -------------------------------------------------------------
-  // Shift is not a separate key here: the submap binds a SHIFT + <key> variant
-  // of every key, so whether Shift was down arrives with the event itself.
-  // Hyprland's SHIFT modmask is side-agnostic, so either Shift works.
-  //
-  // It scales the discrete per-press step. It does NOT also scale the held
-  // sweep — Shift already starts that at top speed (see startSweep), and
-  // multiplying a maxed ramp by 8 would cross the screen in under 100ms.
-  function shiftFactor() { return root.moveShift ? root.shiftScale : 1 }
+  // ---- window edges ---------------------------------------------------------
+  // Read from Quickshell's Hyprland toplevels, whose lastIpcObject carries at/
+  // size — in process, so this costs no subprocess and can be refreshed on every
+  // keypress. Only windows on the focused monitor's active workspace count, and
+  // each edge remembers the span it covers on the other axis: an edge you are
+  // not level with is not one you could collide with.
+  function collectEdges() {
+    var vx = [], hy = []
+    var ws = Hyprland.focusedWorkspace ? String(Hyprland.focusedWorkspace.name) : ""
+    var list = Hyprland.toplevels ? Hyprland.toplevels.values : []
+    for (var i = 0; i < list.length; i++) {
+      var o = list[i].lastIpcObject
+      if (!o || o.mapped !== true || o.hidden === true) continue
+      if (!o.workspace || String(o.workspace.name) !== ws) continue
+      if (!o.at || !o.size) continue
+      var ax = o.at[0] - root.screenX, ay = o.at[1] - root.screenY
+      var w = o.size[0], h = o.size[1]
+      if (!(w > 0) || !(h > 0)) continue
+      vx.push({ c: ax, lo: ay, hi: ay + h })
+      vx.push({ c: ax + w, lo: ay, hi: ay + h })
+      hy.push({ c: ay, lo: ax, hi: ax + w })
+      hy.push({ c: ay + h, lo: ax, hi: ax + w })
+    }
+    // The screen always bounds you, so there is always something to snap to.
+    vx.push({ c: 0, lo: -1e9, hi: 1e9 })
+    vx.push({ c: root.screenW - 1, lo: -1e9, hi: 1e9 })
+    hy.push({ c: 0, lo: -1e9, hi: 1e9 })
+    hy.push({ c: root.screenH - 1, lo: -1e9, hi: 1e9 })
+    root.edgesX = vx
+    root.edgesY = hy
+  }
+
+  // Nearest edge strictly ahead of `from` along `sign`, level with `cross`.
+  // maxDist <= 0 means unbounded, which is what Shift uses.
+  function nextEdge(list, from, cross, sign, maxDist) {
+    var bestC = NaN, bestD = Infinity
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i]
+      if (cross < e.lo || cross > e.hi) continue
+      var d = (e.c - from) * sign
+      if (d <= root.edgeEpsilon) continue      // strictly ahead, so we always progress
+      if (maxDist > 0 && d > maxDist) continue
+      if (d < bestD) { bestD = d; bestC = e.c }
+    }
+    return bestC
+  }
 
   // Enter a sweep in `dir` carrying speed `h`, without waiting for the new
   // key's first repeat. Two callers need this:
@@ -334,7 +376,25 @@ Item {
     motionTimer.start()
   }
 
-  function moveBy(dir, px) {
+  // Move `px` along `dir`, but land on a window edge if one lies in the way.
+  // Unshifted, only edges within the travel distance count, so movement is
+  // magnetic without being teleportive. Shifted, the search is unbounded and the
+  // cursor lands on the next edge however far off it is — that is the skitter.
+  function moveStep(dir, px) {
+    var horiz = dir[0] !== 0
+    var sign = horiz ? dir[0] : dir[1]
+    var from = horiz ? root.curX : root.curY
+    var cross = horiz ? root.curY : root.curX
+    var e = root.nextEdge(horiz ? root.edgesX : root.edgesY, from, cross, sign,
+                          root.moveShift ? 0 : px)
+    if (!isNaN(e)) {
+      if (horiz) root.warp(e, root.curY)
+      else root.warp(root.curX, e)
+      return
+    }
+    // Shift only ever lands on edges; the screen is in the list, so running out
+    // means there is nowhere further to go.
+    if (root.moveShift) return
     root.warp(root.curX + dir[0] * px, root.curY + dir[1] * px)
   }
 
@@ -415,16 +475,24 @@ Item {
     root.pokeIdle()
     root.moveDir = d
     root.moveShift = (shifted === true)
-    if (repeat) { root.confirmHold(now, root.repeatGapMs); return }
+    root.collectEdges()                 // cheap, and keeps up with moved windows
+    if (repeat && !root.moveShift) { root.confirmHold(now, root.repeatGapMs); return }
 
     if (root.moveShift) {
-      root.startSweep(code, now, root.sweepMs / 1000)     // shift: sweep at once
-    } else if (root.holdConfirmed && root.activeKind === "move") {
+      // Skitter: each event jumps exactly one edge. Deliberately no continuous
+      // motion — at tick rate that would blow through every edge on screen in
+      // about a tenth of a second.
+      root.holdConfirmed = false
+      motionTimer.stop()
+      root.moveStep(d, 0)
+      return
+    }
+    if (root.holdConfirmed && root.activeKind === "move") {
       root.startSweep(code, now, root.holdH)              // hand the speed over
     } else {
       root.beginHold("move", code, now)
     }
-    root.moveBy(d, root.baseStep * root.shiftFactor())     // the floor, scaled
+    root.moveStep(d, root.baseStep)
   }
 
   // ---- input ----------------------------------------------------------------
@@ -458,7 +526,7 @@ Item {
   }
 
   // Every key also gets a SHIFT + variant, so Shift never falls through to the
-  // focused app and movement can scale by shiftScale. Shift is a no-op for
+  // focused app, and Shift can select edge snapping. Shift is a no-op for
   // buttons, Tab and scrolling.
   Instantiator {
     model: root.keyDefs
@@ -570,7 +638,7 @@ Item {
         root.holdH = Math.min(root.sweepMs / 1000, root.holdH + dt)
         root.pokeIdle()
         if (root.activeKind === "move") {
-          root.moveBy(root.moveDir, root.speedFor(root.holdH) * dt)
+          root.moveStep(root.moveDir, root.speedFor(root.holdH) * dt)
         } else if (root.activeKind === "scroll") {
           root.scrollAcc += root.scrollRateFor(root.holdH) * dt
           while (root.scrollAcc >= 1) { root.scroll(root.scrollSign); root.scrollAcc -= 1 }

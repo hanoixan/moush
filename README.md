@@ -23,10 +23,9 @@ happened yet, the session is *armed but inert*: keys do nothing, no marker.
 | **right** *(default)* | `w` `a` `s` `d` | `,` | `.` | `/` | `r` / `f` |
 | **arrows** | arrow keys | `d` | `s` | `a` | PgUp / PgDn |
 
-Holding **either Shift** with a movement key does two things: a discrete press
-moves `shiftScale` (8) times `baseStep`, and a held press **sweeps at once**
-rather than waiting out the acceleration ramp. Shift is a no-op for the buttons,
-Tab and scrolling.
+Holding **either Shift** with a movement key turns it into an **edge skitter**:
+each press jumps straight to the next window edge in that direction, however far
+away it is. Shift is a no-op for the buttons, Tab and scrolling.
 
 `Tab` cycles left → right → arrows. The active keymap is written to
 `$XDG_STATE_HOME/quickshell/by-shell/<id>/mousekeys.json` and restored on load;
@@ -61,18 +60,47 @@ restart it. This needs an explicit bridge: the key that will sustain the sweep
 does not repeat for 250ms, so without one the motion would lapse after
 `repeatGapMs` and the speed would bleed away while waiting.
 
-**Shift starts a sweep at full `h` immediately**, skipping the ramp. It scales
-the discrete per-press step by `shiftScale` but deliberately does *not* also
-scale the held sweep — that ramp is already maxed, and multiplying it by 8 would
-cross the screen in under 100ms.
-
-Measured:
+Both modes wait out the acceleration ramp identically; Shift changes *where the
+cursor lands*, not how fast it gets going.
 
 ```
-unshifted 'd', 150ms in        8px     the ramp wait, unchanged
-SHIFT + 'd',   150ms in      370px     sweeping at once
 takeover, both keys held     255px     in 180ms, speed carried over
 takeover, old key released   349px     in 180ms, ~1939px/s
+```
+
+### Edge snapping
+
+Movement is magnetic to window edges. Every press looks for the nearest edge
+ahead of the cursor in that direction:
+
+| | search range | effect |
+|---|---|---|
+| **unshifted** | within the distance this press would travel | lands on an edge it would otherwise step over; otherwise moves the full distance |
+| **Shift** | unbounded | jumps to the next edge however far away — walk the screen edge by edge |
+
+Edges come from Quickshell's Hyprland toplevels, whose `lastIpcObject` carries
+`at`/`size` **in process** — no subprocess, so the set is rebuilt on every
+keypress and keeps up with windows that move. Only windows on the focused
+monitor's active workspace count, and each edge remembers the span it covers on
+the *other* axis: an edge you are not level with is not one you could collide
+with. The screen's own bounds are always included, so there is always something
+to snap to and Shift never leaves you with nowhere to go.
+
+Candidates must be *strictly* ahead (`edgeEpsilon`), which is what stops a sweep
+sticking: a held key snaps onto each edge as it passes and then carries on past
+it, rather than pinning to the first one it meets.
+
+Measured against a workspace with windows at `x:12..746`, `x:760..1489` and
+`x:1503..2237` on a 1536px screen:
+
+```
+from x=0   tap right   ->    8    nothing within 8px, so a full step
+           tap right   ->   12    snapped: the window edge was 4px away
+           tap right   ->   20    nothing within 8px again
+      SHIFT+right      ->  746 -> 760 -> 1489 -> 1503 -> 1535 -> stays
+      SHIFT+left       -> 1503    and back again
+sweep right 0.75s      ->  406px  passes through edges, does not stick
+from y=0   SHIFT+down  ->   38 -> 852 -> 863   window top, bottom, screen
 ```
 
 Shift is not read as a separate key — it cannot be, with no keyboard grab. The

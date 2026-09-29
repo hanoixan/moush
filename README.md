@@ -119,14 +119,24 @@ H J K L ; '         d  left click
 Everything else passes through, so typing still works.
 
 **The grid is a binding, not code.** Each position is an action named
-`m<x2>_<y>` — row `y`, column `x2` in half-key steps — so `bindings.lua` says
+`m<x4>_<y>` — row `y`, column `x4` in quarter-key steps — so `bindings.lua` says
 which physical key sits at which grid point, and the plugin only ever reads
 coordinates out of the action name. Re-measuring the grid for a differently
 staggered keyboard is an edit there and nothing else.
 
-x is halved because the rows are staggered by half a key. That makes a column
-step and a row step the same distance, so `7`→`0` and `7`→`N` both measure 3,
-as they do under your fingers.
+x is in quarters because the real stagger is not uniform. The number row sits half
+a key right of `YUIOP`, and `HJKL` and `NM` are a further quarter right again:
+
+```
+ 7 8 9 0 -      +0.50 keys
+Y U I O P [     +0.00
+ H J K L ; '    +0.25
+  N M , . /     +0.75
+```
+
+Quartering keeps a column step and a row step the same distance, so the grid
+measures the way it feels under the hand rather than the way it is easiest to
+type out.
 
 **Presses are grouped into clusters, and a fit never spans two.** A gap longer
 than `mashClusterMs` (200ms) ends the gesture, and the next press starts a fresh

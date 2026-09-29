@@ -115,14 +115,16 @@ Item {
   // Keys live in bindings.lua, not here. Each keymap is a Hyprland submap whose
   // binds point at these action names, so remapping a key is a one-line edit in
   // that file and needs no change to this plugin.
-  // Mash grid positions are actions too, named by coordinate: "m<x2>_<y>", where
-  // x2 is the half-key column so the staggered rows land on whole numbers. That
-  // puts the entire spatial layout in bindings.lua — which physical key sits at
-  // which grid position is a binding, like everything else here.
-  readonly property var mashCols: [[1, 3, 5, 7, 9],            // 7 8 9 0 -
-                                   [0, 2, 4, 6, 8, 10],        // Y U I O P [
-                                   [0, 2, 4, 6, 8, 10],        // H J K L ; '
-                                   [1, 3, 5, 7, 9]]            // N M , . /
+  // Mash grid positions are actions too, named by coordinate: "m<x4>_<y>", where
+  // x4 is the column in *quarter*-key steps, which is the coarsest unit the real
+  // stagger fits in: the top two rows sit on halves, and the bottom two are a
+  // further quarter to the right again. That puts the entire spatial layout in
+  // bindings.lua — which physical key sits at which grid position is a binding,
+  // like everything else here.
+  readonly property var mashCols: [[2, 6, 10, 14, 18],         // 7 8 9 0 -     x.50
+                                   [0, 4, 8, 12, 16, 20],      // Y U I O P [   x.00
+                                   [1, 5, 9, 13, 17, 21],      // H J K L ; '   x.25
+                                   [3, 7, 11, 15, 19]]         // N M , . /     x.75
   readonly property var mashActions: {
     var out = []
     for (var y = 0; y < root.mashCols.length; y++)
@@ -805,10 +807,10 @@ Item {
   function mashPos(name) {
     var m = /^m(\d+)_(\d+)$/.exec(name)
     if (!m) return null
-    // x is halved because the rows are staggered by half a key: that makes one
-    // column step and one row step the same distance, so 7->0 and 7->N both
-    // measure 3, as they do on the actual keyboard.
-    return ({ x: parseInt(m[1], 10) / 2, y: parseInt(m[2], 10) })
+    // Quartered, so a column step and a row step are the same distance and the
+    // row stagger comes out at its true fraction of a key rather than the nearest
+    // half.
+    return ({ x: parseInt(m[1], 10) / 4, y: parseInt(m[2], 10) })
   }
 
   // Direction through the last three presses, chosen so the two projected
@@ -1709,7 +1711,7 @@ Item {
       visible: root.active && root.keymap === "mash" && root.mashDebug
       x: 32
       y: 44
-      width: root.dbgPitch * 5 + 2 * root.dbgMaxLen
+      width: root.dbgPitch * 5.25 + 2 * root.dbgMaxLen
       height: root.dbgPitch * 3 + 2 * root.dbgMaxLen + root.dbgFootH + root.dbgLogH
       onVisibleChanged: if (visible) { requestPaint(); dbgTimer.start() }
       onPaint: {
@@ -1739,7 +1741,7 @@ Item {
 
         // Vectors all radiate from the middle of the grid: they are directions,
         // not places, so a common origin makes them comparable at a glance.
-        var ox = pad + 2.5 * pitch, oy = pad + 1.5 * pitch
+        var ox = pad + 2.6 * pitch, oy = pad + 1.5 * pitch
         function arrow(sx, sy, vx, vy, col, alpha, len) {
           var m = Math.sqrt(vx * vx + vy * vy)
           if (!(m > 0) || alpha <= 0) return
@@ -1853,8 +1855,8 @@ Item {
         ctx.textBaseline = "middle"
         for (var y = 0; y < root.mashCols.length; y++) {
           for (var c = 0; c < root.mashCols[y].length; c++) {
-            var x2 = root.mashCols[y][c]
-            var nm = "m" + x2 + "_" + y
+            var x4 = root.mashCols[y][c]
+            var nm = "m" + x4 + "_" + y
             // Latest strike wins, so a key hit twice shades by its most recent.
             var hitT = -1
             for (var h = 0; h < root.dbgHits.length; h++)
@@ -1864,7 +1866,7 @@ Item {
             var bg = hitT < 0 ? root.dbgKeyIdle
                               : root.dbgMix(root.dbgKeyCold, root.dbgKeyHot,
                                             span > 0 ? (hitT - t0) / span : 1)
-            var px = pad + (x2 / 2) * pitch, py = pad + y * pitch
+            var px = pad + (x4 / 4) * pitch, py = pad + y * pitch
             ctx.fillStyle = root.dbgRgba(bg[0], bg[1], bg[2], 1)
             ctx.beginPath(); ctx.arc(px, py, 9, 0, 2 * Math.PI); ctx.fill()
             ctx.fillStyle = root.dbgRgba(255, 255, 255, hitT < 0 ? 0.42 : 1)

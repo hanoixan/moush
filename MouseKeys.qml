@@ -361,13 +361,26 @@ Item {
       var ax = o.at[0] - root.screenX, ay = o.at[1] - root.screenY
       var w = o.size[0], h = o.size[1]
       if (!(w > 0) || !(h > 0)) continue
+      // Edges are stored as the *last pixel inside* the window, not the exclusive
+      // bound: a window at x=12 w=734 covers 12..745, so its right edge is 745 and
+      // not 746. Landing on 746 puts the pointer one pixel past the window, over
+      // whatever is behind it — so a double-tap down inside a floating window used
+      // to come to rest just below it and focus the window underneath instead of
+      // staying put. Keeping every edge inside its own window also means a landing
+      // is always over the window whose edge it is, which is what makes focus
+      // follow correctly with no special cases.
+      //
+      // Doing it here rather than when landing is why nextEdge() needs no
+      // adjustment: the stored coordinate is already the reachable one, so
+      // "strictly ahead" keeps making progress on its own.
+      //
       // Windows routinely extend past the screen, and an edge you cannot reach
       // is not a snap target: warp() would clamp it back and the press would do
       // nothing — worse, it would hide the fact that we have run out of edges.
-      root.pushEdge(vx, ax, ay, ay + h, root.screenW - 1)
-      root.pushEdge(vx, ax + w, ay, ay + h, root.screenW - 1)
-      root.pushEdge(hy, ay, ax, ax + w, root.screenH - 1)
-      root.pushEdge(hy, ay + h, ax, ax + w, root.screenH - 1)
+      root.pushEdge(vx, ax,         ay, ay + h - 1, root.screenW - 1)
+      root.pushEdge(vx, ax + w - 1, ay, ay + h - 1, root.screenW - 1)
+      root.pushEdge(hy, ay,         ax, ax + w - 1, root.screenH - 1)
+      root.pushEdge(hy, ay + h - 1, ax, ax + w - 1, root.screenH - 1)
     }
     // The screen always bounds you, so there is always something to snap to.
     vx.push({ c: 0, lo: -1e9, hi: 1e9 })
@@ -601,10 +614,12 @@ Item {
       // far as it intends to; re-focusing would not move anything.
       if (t.address === focused) continue
       var lo = horiz ? t.y : t.x
-      var hi = lo + (horiz ? t.h : t.w)
+      var hi = lo + (horiz ? t.h : t.w) - 1
       if (cross < lo || cross > hi) continue
       var near = horiz ? t.x : t.y
-      var end = near + (horiz ? t.w : t.h)
+      // Last pixel again, so a window ending exactly on the screen edge is not
+      // mistaken for one with a further pixel to reveal.
+      var end = near + (horiz ? t.w : t.h) - 1
       // Does it reach past the boundary we are pinned against?
       var over = sign > 0 ? end - far : 0 - near
       if (over <= root.edgeEpsilon) continue

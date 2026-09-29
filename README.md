@@ -144,6 +144,17 @@ ahead of the cursor in that direction:
 | **single press** | within the distance this press would travel | lands on an edge it would otherwise step over; otherwise moves the full distance |
 | **double-tap** — same key re-pressed within `fast_tap_ms` (130ms) | unbounded | skitters to the next edge however far away |
 
+An edge is stored as **the last pixel inside its window**, not the exclusive
+bound. A window at `x=12 w=734` covers `12..745`, so its right edge is `745`; the
+snap target is never `746`. This matters because `746` is *outside* the window —
+resting there puts the pointer over whatever is behind, so a double-tap down
+inside a floating window came to rest one row below it and focus fell through to
+the window underneath. Keeping edges inside their own window means a landing is
+always over the window whose edge it is, which is what lets focus follow with no
+special cases. Doing it at collection time is also why the search needs no
+adjustment: the stored coordinate is already the reachable one, so "strictly
+ahead" keeps making progress by itself.
+
 Only edges **on screen** are candidates. Windows routinely extend past the
 display, and an edge you cannot reach is not a snap target: `warp()` clamps it
 back, so the press appears to do nothing — and worse, it hides the fact that the
@@ -164,17 +175,18 @@ address** — never by direction.
   click will land.
 
   Only when the cursor sits over *nothing* does the direction of travel decide,
-  probed one pixel along it. That happens on a gap, or on a window's far edge,
-  which is at `x + w` and therefore one past the last pixel: arriving there from
-  the other side leaves you just outside the window you reached, which is why
-  snapping leftwards onto a window's right edge used to leave it unfocused while
-  the mirror going right worked (a left edge being a window's first pixel). The
-  nudge also settles which window an edge belongs to when two of them touch with
-  no gap — the one being entered wins.
+  probed one pixel along it. Since edges are last-pixel-inside coordinates, that
+  now only happens in genuinely empty space — the strip above every window, or a
+  gap the screen bound falls in — so it is a fallback rather than the main path.
 
   Probing the nudge *first* is wrong, and was: a short floating window's top edge
   is already inside it, so nudging upwards escaped to the tiled window behind and
   focused something the pointer was not over.
+
+  Focus has to be set explicitly; moving the pointer is not enough. Omarchy runs
+  `input:follow_mouse = 1`, but that acts on real pointer motion, not on a
+  dispatcher warp: a cursor parked deep inside another window by
+  `hl.dsp.cursor.move` leaves focus where it was. Measured both ways.
 
   When windows overlap, the one on top wins: floating above tiled, and among
   equals the more recently focused (`focusHistoryID`). Hyprland's client list is

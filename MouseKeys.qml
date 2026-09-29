@@ -404,7 +404,8 @@ Item {
       // going", so hand off as well. If there is no neighbour that way it is a
       // no-op and the cursor simply rests at the edge, which is why the warp
       // happens either way.
-      if (unbounded && horiz && (e <= 0 || e >= root.screenW - 1)) root.focusNeighbour(sign)
+      var far = horiz ? root.screenW - 1 : root.screenH - 1
+      if (unbounded && (e <= 0 || e >= far)) root.focusNeighbour(horiz, sign)
       return
     }
     if (unbounded) {
@@ -413,7 +414,7 @@ Item {
       // the very action Omarchy's SUPER+LEFT/RIGHT binds run. Synthesising that
       // keystroke instead would do nothing: SUPER+RIGHT is not bound inside our
       // own submap, so the key would just be swallowed.
-      if (horiz) root.focusNeighbour(sign)
+      root.focusNeighbour(horiz, sign)
       return
     }
     root.warp(root.curX + dir[0] * px, root.curY + dir[1] * px)
@@ -435,9 +436,10 @@ Item {
 
   // Focusing a neighbour warps the cursor into it, which leaves our tracked
   // position stale — so re-read it once the warp has settled.
-  function focusNeighbour(sign) {
-    root.hypr('hl.dsp.focus({ direction = "' + (sign > 0 ? "r" : "l") + '" })')
-    root.log("focus " + (sign > 0 ? "right" : "left"))
+  function focusNeighbour(horiz, sign) {
+    var dir = horiz ? (sign > 0 ? "r" : "l") : (sign > 0 ? "d" : "u")
+    root.hypr('hl.dsp.focus({ direction = "' + dir + '" })')
+    root.log("focus " + dir)
     resyncTimer.restart()
   }
 

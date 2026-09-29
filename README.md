@@ -92,15 +92,21 @@ skitter has run out of edges.
 
 #### Walking off the edge of the screen
 
-When a double-tap's hop would land on the screen's own left or right edge, the
-plugin also runs Hyprland's directional focus — the same action Omarchy's
-`SUPER+LEFT` / `SUPER+RIGHT` binds perform. Focusing a neighbour warps the cursor
-into it, so a run of double-taps walks edge to edge across one window, then
-crosses into the next and carries on:
+When a double-tap's hop would land on any of the screen's own edges, the plugin
+also runs Hyprland's directional focus — the same action Omarchy's `SUPER+LEFT`,
+`SUPER+RIGHT`, `SUPER+UP` and `SUPER+DOWN` binds perform. Focusing a neighbour
+warps the cursor into it, so a run of double-taps walks edge to edge across one
+window, then crosses into the next and carries on. All four directions behave
+the same way.
 
 ```
-0 -> 12 -> 746 -> 760 -> 1489 -> 1503 -> [focus right, cursor lands at 1124]
-1124 -> 1489 -> 1503 -> [focus right, cursor lands at 1157]
+horizontal, three windows side by side:
+  0 -> 12 -> 746 -> 760 -> 1489 -> 1503 -> [focus right, cursor lands at 1124]
+  1124 -> 1489 -> 1503 -> [focus right, cursor lands at 1157]
+
+vertical, two windows stacked:
+  852 -> [focus down, cursor lands at 238]
+  238 -> 438 -> 452 -> 852 -> [focus down, cursor lands at 652]
 ```
 
 Two details make this behave:

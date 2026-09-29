@@ -82,7 +82,7 @@ Item {
   // A gap longer than this ends the gesture: the next press starts a fresh
   // cluster, and a fit is only ever made from presses within one. Mixing two
   // sweeps separated by a pause produced a direction belonging to neither.
-  readonly property int mashClusterMs: 100
+  readonly property int mashClusterMs: 200
   readonly property int mashTrailMax: 16
   readonly property var mashStrategies: ["cpa", "lsq", "net", "pca", "ewma"]
   readonly property real dbgPitch: 26         // px between grid cells

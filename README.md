@@ -129,7 +129,7 @@ step and a row step the same distance, so `7`→`0` and `7`→`N` both measure 3
 as they do under your fingers.
 
 **Presses are grouped into clusters, and a fit never spans two.** A gap longer
-than `mashClusterMs` (100ms) ends the gesture, and the next press starts a fresh
+than `mashClusterMs` (200ms) ends the gesture, and the next press starts a fresh
 cluster with nothing carried over. Without that, two sweeps either side of a pause
 were fitted together and produced a direction belonging to neither. The cluster
 *is* the window every strategy reads — there is no separate sliding window any

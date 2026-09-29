@@ -941,7 +941,9 @@ Item {
   function mashWindow() { return root.mashTrail }
 
   // cpa — magnitude-weighted mean of the fitted subvectors. Longer hops count for
-  // more and a mash that reverses cancels itself out.
+  // more and a mash that reverses cancels itself out. Alone among these it cannot
+  // start before the third press: a subvector compares the two velocities within a
+  // triple, and two presses give only one.
   function mashCpa(now) {
     var sx = 0, sy = 0, n = 0
     for (var i = 0; i < root.mashSubs.length; i++) {
@@ -956,7 +958,10 @@ Item {
   // The steadiest of these without being blind to the middle of the gesture.
   function mashLsq(now) {
     var w = root.mashWindow()
-    if (w.length < 3) return null
+    // Two points are enough: the least-squares line through them is simply the
+    // line joining them. Demanding three left the first two presses of every
+    // cluster driving nothing at all.
+    if (w.length < 2) return null
     var tb = 0, xb = 0, yb = 0, i
     for (i = 0; i < w.length; i++) { tb += w[i].t; xb += w[i].x; yb += w[i].y }
     tb /= w.length; xb /= w.length; yb /= w.length
@@ -985,7 +990,9 @@ Item {
   // the others average that to nothing, this reads it as motion on that axis.
   function mashPca(now) {
     var w = root.mashWindow()
-    if (w.length < 3) return null
+    // Two points are enough here too: the dominant axis of a pair is the line
+    // joining them, which is exactly the answer wanted.
+    if (w.length < 2) return null
     var xb = 0, yb = 0, i
     for (i = 0; i < w.length; i++) { xb += w[i].x; yb += w[i].y }
     xb /= w.length; yb /= w.length

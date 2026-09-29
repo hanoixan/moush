@@ -162,6 +162,17 @@ press trail and return one velocity in key-widths per second:
 | `pca` | dominant axis of the positions, speed from distance *along* it | the only one that reads mashing back and forth on one line as motion; the others average it to nothing |
 | `ewma` | every hop's own velocity, newest weighted most | turns fastest, twitchiest, no hard window edge |
 
+All of them steer from the **second** press of a cluster except `cpa`, which cannot
+start before the third: a subvector compares the two velocities inside a triple,
+and two presses give only one. Until a strategy has enough to work with, a press
+moves the cursor by the `mashStepPx` floor and nothing more.
+
+```
+                cpa    lsq    net    pca    ewma
+2 presses        1px   324px  376px  410px  366px
+3 presses      569px  1135px    -   1135px    -
+```
+
 ```lua
 MOUSEKEYS = {
   mash_strategy = "cpa",                        -- steers the pointer

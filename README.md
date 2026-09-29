@@ -225,13 +225,22 @@ a fit that was rejected and contributed nothing. Hits and vectors fade over
 `dbgFadeMs` (3s), so the trace of a gesture stays readable just after it ends.
 
 **Every strategy in `mash_debug_strategies` is drawn too**, whether or not it is
-the one steering, so they can be read against each other live. Each gets a colour
-and a dash pattern derived from its own name — hue from a hash, with saturation
-and lightness pinned high so any name reads as bright — and a small white-on-grey
-label near the vector start. Labels are staggered both along the ray and across
-it: clamping them to the arrow put every label in one place whenever the vectors
-were short, and spreading them along the ray alone still collided whenever the
-strategies agreed, which is exactly when you most want to tell them apart.
+the one steering, so they can be read against each other live. A colour key along
+the bottom of the panel says which is which, greying out any that has produced
+nothing to draw.
+
+Colour and dash come from a strategy's place in the canonical list rather than
+from a hash of its name. Hashing gave no guarantee that two would not land on
+near-identical hues, which is the one thing this must not do; an index gives each
+an evenly spaced slot, with a name-derived jitter *inside* its own slot so the
+palette does not read as a plain rainbow while no two slots can ever touch. The
+five are 57° apart at the closest. A strategy keeps its colour whichever subset is
+drawn.
+
+Labels on the vectors themselves were tried first and removed: they collided
+precisely when the strategies agreed, which is when telling them apart matters
+most. Staggering them along the ray and across it helped but never fully fixed it,
+and the key along the bottom does the job without cluttering the vectors.
 
 The red is the reason this is worth having. A reversal — `L K L`, say — fits to
 an axis with *exactly no motion along it*, so it steers nothing. Without the

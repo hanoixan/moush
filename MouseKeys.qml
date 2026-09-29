@@ -87,6 +87,7 @@ Item {
   readonly property real dbgScale: 4          // px drawn per key-width/second
   readonly property real dbgMaxLen: 92        // ...but never longer than this
   readonly property real dbgDeadLen: 26       // degenerate vectors have no speed to scale
+  readonly property real dbgFootH: 20         // strip along the bottom for the colour key
   readonly property var dbgGlyphs: ({ bracketleft: "[", bracketright: "]",
                                       apostrophe: "'", semicolon: ";", comma: ",",
                                       period: ".", slash: "/", minus: "-", grave: "`" })
@@ -877,15 +878,29 @@ Item {
 
   readonly property var dbgDashes: [[], [7, 4], [2, 4], [12, 4, 3, 4], [1, 5], [6, 3, 1, 3]]
 
+  // Hue and dash come from the strategy's place in mashStrategies, not from a
+  // hash of its name: hashing gave no guarantee two of them would not land on
+  // near-identical hues, which is the one thing this must not do. An index gives
+  // each an evenly spaced slot, and a name-derived jitter inside its own slot
+  // keeps the palette from looking like a plain rainbow without ever letting two
+  // slots touch. A strategy therefore keeps its colour whichever subset is drawn.
+  function dbgStratHue(name) {
+    var n = root.mashStrategies.length
+    var i = root.mashStrategies.indexOf(name)
+    if (i < 0) return 0
+    var slot = 360 / n
+    return (i * slot + (root.dbgHash(name) % Math.floor(slot / 2))) / 360
+  }
+
   function dbgStratColor(name, a) {
-    // Hue is all the name picks: saturation and lightness stay pinned high so
-    // every strategy reads as bright, whatever name it is given.
-    var c = root.dbgHsl((root.dbgHash(name) % 360) / 360, 0.95, 0.62)
+    // Saturation and lightness stay pinned high so every strategy reads as bright.
+    var c = root.dbgHsl(root.dbgStratHue(name), 0.95, 0.62)
     return root.dbgRgba(c[0], c[1], c[2], a)
   }
 
   function dbgStratDash(name) {
-    return root.dbgDashes[(root.dbgHash(name) >>> 9) % root.dbgDashes.length]
+    var i = root.mashStrategies.indexOf(name)
+    return root.dbgDashes[(i < 0 ? 0 : i) % root.dbgDashes.length]
   }
 
   function dbgGlyph(k) {
@@ -1671,7 +1686,7 @@ Item {
       x: 32
       y: 44
       width: root.dbgPitch * 5 + 2 * root.dbgMaxLen
-      height: root.dbgPitch * 3 + 2 * root.dbgMaxLen
+      height: root.dbgPitch * 3 + 2 * root.dbgMaxLen + root.dbgFootH
       onVisibleChanged: if (visible) { requestPaint(); dbgTimer.start() }
       onPaint: {
         var ctx = getContext("2d")
@@ -1724,20 +1739,11 @@ Item {
         arrow(root.dbgDriveX, root.dbgDriveY, root.dbgRgba(64, 255, 128, da), da,
               dm * root.dbgScale)
 
-        // Every strategy on the debug list, in its own seeded colour and dash, so
-        // they can be read against each other and against the green one actually
-        // steering. Labels step further out the further down the list they are,
-        // which keeps them apart when two strategies agree and overlap.
-        function tag(txt, lx, ly, a) {
-          ctx.font = "9px monospace"
-          ctx.textAlign = "center"
-          ctx.textBaseline = "middle"
-          var tw = txt.length * 5.4 + 8
-          ctx.fillStyle = root.dbgRgba(60, 60, 60, 0.92 * a)
-          ctx.fillRect(lx - tw / 2, ly - 7, tw, 14)
-          ctx.fillStyle = root.dbgRgba(255, 255, 255, a)
-          ctx.fillText(txt, lx, ly)
-        }
+        // Every strategy on the debug list, in its own colour and dash, so they can
+        // be read against each other and against the green one actually steering.
+        // Which is which is settled by the legend along the bottom rather than by
+        // labels on the vectors: those collided precisely when the strategies
+        // agreed, which is when telling them apart matters most.
         for (var si = 0; si < root.mashDebugStrategies.length; si++) {
           var sn = root.mashDebugStrategies[si]
           var rec = root.dbgStrats[sn]
@@ -1748,14 +1754,27 @@ Item {
           ctx.setLineDash(root.dbgStratDash(sn))
           arrow(rec.x, rec.y, root.dbgStratColor(sn, ra), ra, rm * root.dbgScale)
           ctx.setLineDash([])
-          // Staggered by position in the list, along the ray *and* across it.
-          // Clamping to the arrow put every label in one place whenever vectors
-          // were short; spreading along the ray alone still collided whenever
-          // strategies agreed, since the labels are wider than the step.
-          var at = 30 + si * 20
-          var off = (si - (root.mashDebugStrategies.length - 1) / 2) * 16
-          var nx = rec.x / rm, ny = rec.y / rm
-          tag(sn, ox + nx * at - ny * off, oy + ny * at + nx * off, ra)
+        }
+
+        // Colour key along the bottom: a swatch in each strategy's own dash, then
+        // its name. Greyed out when that strategy has produced nothing to draw.
+        ctx.font = "9px monospace"
+        ctx.textBaseline = "middle"
+        ctx.textAlign = "left"
+        var fy = dbgCanvas.height - root.dbgFootH / 2
+        var fx = 8
+        for (si = 0; si < root.mashDebugStrategies.length; si++) {
+          var fn = root.mashDebugStrategies[si]
+          var live = root.dbgStrats[fn] ? root.dbgAlpha(root.dbgStrats[fn].t, now) : 0
+          var fa = 0.45 + 0.55 * live
+          ctx.strokeStyle = root.dbgStratColor(fn, fa)
+          ctx.lineWidth = 2
+          ctx.setLineDash(root.dbgStratDash(fn))
+          ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + 16, fy); ctx.stroke()
+          ctx.setLineDash([])
+          ctx.fillStyle = root.dbgRgba(255, 255, 255, fa)
+          ctx.fillText(fn, fx + 20, fy)
+          fx += 26 + fn.length * 5.6
         }
 
         // Keys last so they sit over the vector origin rather than under it.

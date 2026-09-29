@@ -55,7 +55,7 @@ MOUSEKEYS = {
   fast_tap_ms = 135,
   carry_ms = 175,
   mash_strategy = "lsq",
-  mash_gain = 0.30,
+  mash_gain = 20,
   mash_vmax = 1000,
   mash_debug_strategies = "cpa,lsq,pca,ewma",
 }
@@ -65,11 +65,31 @@ MOUSEKEYS = {
 -- keymap is just another call plus its name in shell.json.
 --
 -- move/scroll keys repeat so a held key sweeps; buttons and cycle fire once.
--- ignore_mods keeps the key reaching the plugin whatever you are holding, which
--- is also what lets Shift+scroll be horizontal and Ctrl+scroll zoom in the app.
+-- Each is bound once per entry in mousekeys_mods, which is what lets Shift+scroll
+-- be horizontal and Ctrl+scroll zoom in the app while leaving SUPER and ALT free.
 -- Scroll keys additionally bind their RELEASE, because a wheel event cancels
 -- Hyprland's key repeat, so the plugin cannot see the key is still down; a
 -- `release = true` bind will not dispatch a global shortcut, so it calls back in.
+-- Mouse mode's keys are bound once per modifier combination that should drive it,
+-- rather than with ignore_mods. SUPER and ALT are deliberately absent, so a key
+-- held with either matches nothing here, mouse mode ignores it, and it reaches the
+-- focused application instead.
+--
+-- ignore_mods cannot express that: it fires whatever is held. Nor does declaring
+-- an explicit "SUPER + key" no-op alongside it help — measured, the ignore_mods
+-- bind still wins, in either declaration order.
+--
+-- This frees the key; it does not restore Omarchy's own SUPER shortcuts. Those
+-- live in the default submap, and a submap replaces the bind set rather than
+-- extending it, so nothing declared outside can fire while mouse mode is on.
+local mousekeys_mods = { "", "SHIFT + ", "CTRL + ", "SHIFT + CTRL + " }
+
+local function mousekeys_bind(key, dispatcher, opts)
+  for _, m in ipairs(mousekeys_mods) do
+    hl.bind(m .. key, dispatcher, opts)
+  end
+end
+
 local function mousekeys_map(name, k)
   -- Published so the plugin can ask which direction keys are physically down.
   -- Hyprland cancels key repeat when any key is released and never hands it back
@@ -83,17 +103,17 @@ local function mousekeys_map(name, k)
   hl.define_submap("mousekeys-" .. name, function()
     hl.bind("CTRL + ALT + Escape", hl.dsp.submap("reset"))          -- emergency exit
     for action, key in pairs({ up = k.up, down = k.down, left = k.left, right = k.right }) do
-      hl.bind(key, hl.dsp.global("mousekeys:" .. action), { repeating = true, ignore_mods = true })
+      mousekeys_bind(key, hl.dsp.global("mousekeys:" .. action), { repeating = true, })
     end
     for action, key in pairs({ scrollup = k.scrollup, scrolldown = k.scrolldown }) do
-      hl.bind(key, hl.dsp.global("mousekeys:" .. action), { repeating = true, ignore_mods = true })
-      hl.bind(key, hl.dsp.exec_cmd("omarchy-shell -q shell call mousekeys scrollstop ''"),
-        { release = true, ignore_mods = true })
+      mousekeys_bind(key, hl.dsp.global("mousekeys:" .. action), { repeating = true, })
+      mousekeys_bind(key, hl.dsp.exec_cmd("omarchy-shell -q shell call mousekeys scrollstop ''"),
+        { release = true, })
     end
     for action, key in pairs({ lmb = k.lmb, mmb = k.mmb, rmb = k.rmb }) do
-      hl.bind(key, hl.dsp.global("mousekeys:" .. action), { ignore_mods = true })
+      mousekeys_bind(key, hl.dsp.global("mousekeys:" .. action), {})
     end
-    hl.bind(k.cycle or "TAB", hl.dsp.global("mousekeys:cycle"), { ignore_mods = true })
+    mousekeys_bind(k.cycle or "TAB", hl.dsp.global("mousekeys:cycle"), {})
   end)
 end
 
@@ -134,22 +154,24 @@ local function mousekeys_mash()
         labels["m" .. x2 .. "_" .. row.y] = key
         -- Not repeating: a held key would restrike the same point forever, and
         -- only key-down is meant to steer the ball.
-        hl.bind(key, hl.dsp.global("mousekeys:m" .. x2 .. "_" .. row.y), { ignore_mods = true })
+        mousekeys_bind(key, hl.dsp.global("mousekeys:m" .. x2 .. "_" .. row.y), {})
       end
     end
     for _, key in ipairs(mash_null) do
-      hl.bind(key, hl.dsp.global("mousekeys:noop"), { ignore_mods = true })
+      mousekeys_bind(key, hl.dsp.global("mousekeys:noop"), {})
     end
-    hl.bind("A", hl.dsp.global("mousekeys:rmb"), { ignore_mods = true })
-    hl.bind("S", hl.dsp.global("mousekeys:mmb"), { ignore_mods = true })
-    hl.bind("D", hl.dsp.global("mousekeys:lmb"), { ignore_mods = true })
-    hl.bind("W", hl.dsp.global("mousekeys:wheel"), { repeating = true, ignore_mods = true })
-    hl.bind("TAB", hl.dsp.global("mousekeys:cycle"), { ignore_mods = true })
-    hl.bind("grave", hl.dsp.global("mousekeys:debug"), { ignore_mods = true })
+    for _, key in ipairs({ "A", "S", "D", "W", "TAB", "Z", "grave" }) do
+    end
+    mousekeys_bind("A", hl.dsp.global("mousekeys:rmb"), {})
+    mousekeys_bind("S", hl.dsp.global("mousekeys:mmb"), {})
+    mousekeys_bind("D", hl.dsp.global("mousekeys:lmb"), {})
+    mousekeys_bind("W", hl.dsp.global("mousekeys:wheel"), { repeating = true, })
+    mousekeys_bind("TAB", hl.dsp.global("mousekeys:cycle"), {})
+    mousekeys_bind("grave", hl.dsp.global("mousekeys:debug"), {})
     -- Cycles which strategy steers, among those the debug view is drawing, so the
     -- new one is always on screen to compare. bindings.lua stays authoritative:
     -- the next session starts from mash_strategy again.
-    hl.bind("Z", hl.dsp.global("mousekeys:strategy"), { ignore_mods = true })
+    mousekeys_bind("Z", hl.dsp.global("mousekeys:strategy"), {})
   end)
 end
 mousekeys_mash()

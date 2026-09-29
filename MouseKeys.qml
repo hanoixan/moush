@@ -239,6 +239,7 @@ Item {
   property string mashStrategy: "cpa"         // which one drives the pointer
   property var mashDebugStrategies: ["cpa", "lsq", "pca", "ewma"]
   property var dbgStrats: ({})                // name -> {x, y, t}, newest result each
+  property bool clusterDone: false            // the gesture has gone quiet; shade by timing
   property var dbgLog: []                     // {g, dt, grid} newest first, for the log
   property real dbgLogAt: 0                   // previous logged event, for the delta
   property var mashTrail: []                  // the current cluster's key-downs
@@ -292,7 +293,7 @@ Item {
       + " keysDown=" + (root.keysDown === "" ? "none" : root.keysDown.replace(/ /g, ","))
       + " ball=" + root.ballVX.toFixed(0) + "," + root.ballVY.toFixed(0)
       + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
-      + " cluster=" + root.mashTrail.length
+      + " cluster=" + root.mashTrail.length + (root.clusterDone ? "done" : "live")
       + " strategy=" + root.mashStrategy
       + " shown=[" + root.mashDebugStrategies.join(",") + "]"
       + " dbg=" + root.mashDebug + " labels=" + Object.keys(root.mashLabels).length
@@ -339,6 +340,8 @@ Item {
     root.mashStop()
     root.dbgHits = []; root.dbgVecs = []; root.dbgDriveAt = 0; root.dbgStrats = ({})
     root.dbgLog = []; root.dbgLogAt = 0
+    root.clusterDone = false
+    clusterTimer.stop()
     dbgTimer.stop()
     root.prevGap = Infinity
     root.lastActionAt = 0
@@ -849,8 +852,21 @@ Item {
   }
 
   function dbgRgba(r, g, b, a) {
-    return "rgba(" + r + "," + g + "," + b + "," + a.toFixed(2) + ")"
+    return "rgba(" + Math.round(r) + "," + Math.round(g) + "," + Math.round(b) + ","
+           + a.toFixed(2) + ")"
   }
+
+  function dbgMix(c0, c1, k) {
+    return [c0[0] + (c1[0] - c0[0]) * k,
+            c0[1] + (c1[1] - c0[1]) * k,
+            c0[2] + (c1[2] - c0[2]) * k]
+  }
+
+  // Dark grey at the start of the cluster, bright green at the end.
+  readonly property var dbgKeyIdle: [38, 38, 38]     // never struck this cluster
+  readonly property var dbgKeyLive: [96, 96, 96]     // struck, cluster still running
+  readonly property var dbgKeyCold: [52, 52, 52]     // struck first
+  readonly property var dbgKeyHot: [40, 235, 95]     // struck last
 
   // Colour and dash come from the strategy's name, so a strategy looks the same
   // every run and two of them never collide by accident.
@@ -1031,6 +1047,8 @@ Item {
       root.dbgStrats = ({}); root.dbgHits = []; root.dbgVecs = []
       root.dbgDriveAt = 0; root.dbgDriveX = 0; root.dbgDriveY = 0
     }
+    root.clusterDone = false
+    clusterTimer.restart()
     root.mashCount += 1
     root.mashLog = (root.mashLog + " " + name).slice(-70)
     root.dbgLogEvent(root.dbgGlyph(root.mashLabels[name]), now, true)
@@ -1399,6 +1417,18 @@ Item {
   // Rolling under friction. Distance from a single impulse is v/friction, so the
   // friction constant sets how long a throw takes without changing how far it
   // goes — the gain above decides that.
+  // The cluster is over once nothing has been struck for the gap that would start
+  // a new one. Waiting for the *next* press to notice would leave the timing
+  // shading unseen until the gesture after it.
+  Timer {
+    id: clusterTimer
+    interval: root.mashClusterMs
+    onTriggered: {
+      root.clusterDone = true
+      if (root.mashDebug) dbgCanvas.requestPaint()
+    }
+  }
+
   Timer {
     id: dbgTimer
     interval: 50
@@ -1823,20 +1853,37 @@ Item {
         }
 
         // Keys last so they sit over the vector origin rather than under it.
+        //
+        // While the cluster is still running a struck key is just lit. Once it has
+        // gone quiet each key is shaded by *when* within the cluster it was
+        // struck — first press dark, last press bright green — so the timing of
+        // the whole gesture reads off the grid at a glance: an even sweep shades
+        // evenly, while a burst that stalled halfway leaves a cliff between two
+        // neighbouring keys.
+        var t0 = root.dbgHits.length > 0 ? root.dbgHits[0].t : 0
+        var span = root.dbgHits.length > 0
+                     ? root.dbgHits[root.dbgHits.length - 1].t - t0 : 0
         ctx.textAlign = "center"
         ctx.textBaseline = "middle"
         for (var y = 0; y < root.mashCols.length; y++) {
           for (var c = 0; c < root.mashCols[y].length; c++) {
             var x2 = root.mashCols[y][c]
             var nm = "m" + x2 + "_" + y
-            // Struck anywhere in this cluster, so lit; the log carries the order.
-            var ha = 0
+            // Latest strike wins, so a key hit twice shades by its most recent.
+            var hitT = -1
             for (var h = 0; h < root.dbgHits.length; h++)
-              if (root.dbgHits[h].name === nm) { ha = 1; break }
+              if (root.dbgHits[h].name === nm) hitT = root.dbgHits[h].t
+            var bg
+            if (hitT < 0) bg = root.dbgKeyIdle
+            else if (!root.clusterDone) bg = root.dbgKeyLive
+            // A single-press cluster has no span to divide by; it is the whole
+            // gesture, so it reads as the end of one.
+            else bg = root.dbgMix(root.dbgKeyCold, root.dbgKeyHot,
+                                  span > 0 ? (hitT - t0) / span : 1)
             var px = pad + (x2 / 2) * pitch, py = pad + y * pitch
-            ctx.fillStyle = root.dbgRgba(255, 255, 255, 0.20 + 0.75 * ha)
+            ctx.fillStyle = root.dbgRgba(bg[0], bg[1], bg[2], 1)
             ctx.beginPath(); ctx.arc(px, py, 9, 0, 2 * Math.PI); ctx.fill()
-            ctx.fillStyle = root.dbgRgba(0, 0, 0, 0.55 + 0.40 * ha)
+            ctx.fillStyle = root.dbgRgba(255, 255, 255, hitT < 0 ? 0.42 : 1)
             ctx.fillText(root.dbgGlyph(root.mashLabels[nm]), px, py + 0.5)
           }
         }

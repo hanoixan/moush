@@ -14,8 +14,16 @@ hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
 --                of stepping, and a scroll key runs to the top or bottom of the
 --                view. Must stay under input:repeat_delay (250ms), or a held
 --                key's first auto-repeat would read as a deliberate re-press.
+--
+--   carry_ms     press a direction within this of the last moment a move key was
+--                down and the speed already built up carries over, instead of
+--                accelerating from rest again. Covers letting go of one arrow a
+--                moment before pressing the next, which otherwise stalls until
+--                the new key's first auto-repeat 250ms later. Independent of
+--                fast_tap_ms; they start out equal only by coincidence.
 MOUSEKEYS = {
   fast_tap_ms = 135,
+  carry_ms = 135,
 }
 
 -- Each keymap is a submap. The binds name ACTIONS, not keys, so remapping is a

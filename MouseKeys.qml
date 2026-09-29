@@ -52,6 +52,10 @@ Item {
   // Lua VM keeps globals across config loads, so MOUSEKEYS.fast_tap_ms set there
   // is readable from here and survives a hyprctl reload.
   property int fastTapMs: 135                 // re-pressing a key quicker than this skitters
+  // A new direction within this of the last evidence a move key was down keeps
+  // the speed already built up instead of starting the ramp again. Unrelated to
+  // fastTapMs even when the numbers happen to match.
+  property int carryMs: 135                   // grace for handing speed to a new direction
   readonly property int scrollEndDetents: 120 // a fast scroll re-tap runs to the end of the view
   readonly property int resyncMs: 130         // wait for a focus warp to settle, then re-read
   readonly property int landMs: 60            // ...then for the refreshed geometry to arrive
@@ -176,6 +180,11 @@ Item {
   property bool holdConfirmed: false          // a repeat proved this is a real hold
   property real holdPressAt: 0                // when the current press began
   property real downUntil: 0                  // held as long as now() < this
+  property real lastDownAt: 0                 // last move-key event: press or repeat
+  // Diagnostics for the carry decision: the gap the last fresh move press saw,
+  // and whether it kept the speed. Reported by probe(); nothing depends on them.
+  property real carryGap: -1
+  property bool carried: false
   property real lastTickAt: 0                 // for integrating against real elapsed time
   property real prevGap: Infinity              // gap before the previous event, for fast-tap
   property string lastHoldAction: ""           // for chaining a press to its own first repeat
@@ -194,7 +203,7 @@ Item {
   // Diagnostic: omarchy-shell shell call <id> probe ""
   function probe() {
     return "opened=" + root.opened + " active=" + root.active + " sticky=" + root.sticky
-      + " keymap=" + root.keymap + " fastTap=" + root.fastTapMs
+      + " keymap=" + root.keymap + " fastTap=" + root.fastTapMs + " carry=" + root.carryMs
       + " cur=" + Math.round(root.curX) + "," + Math.round(root.curY)
       + " focus=" + root.focusedAddress()
       + " idle=" + idleTimer.running + " long=" + longPressTimer.running
@@ -202,6 +211,7 @@ Item {
       + " edges=" + root.edgesX.length + "/" + root.edgesY.length
       + " autoscroll=" + autoScroll.running
       + " holdH=" + root.holdH.toFixed(2) + " v=" + root.speedFor(root.holdH).toFixed(0)
+      + " carryGap=" + Math.round(root.carryGap) + " carried=" + root.carried
   }
 
   // Hyprland 0.56 parses dispatch arguments as Lua, and Quickshell already
@@ -230,6 +240,7 @@ Item {
     root.screenH = scr.height
     root.lastAction = ""
     root.lastHoldAction = ""
+    root.lastDownAt = 0
     root.prevGap = Infinity
     root.lastActionAt = 0
     root.holdH = 0
@@ -752,8 +763,20 @@ Item {
     root.pokeIdle()
     root.moveDir = d
     root.collectEdges()                 // cheap, and keeps up with moved windows
-    if (repeat) { root.confirmHold(now, root.repeatGapMs); return }
-    if (root.holdConfirmed && root.activeKind === "move") {
+    if (repeat) { root.lastDownAt = now; root.confirmHold(now, root.repeatGapMs); return }
+    // Hand the speed over rather than re-running the ramp. This used to require
+    // the previous key to still count as down, so letting go for even a moment
+    // cost all of it: beginHold() takes one baseStep and then nothing moves until
+    // the first auto-repeat lands 250ms later. Measuring from the last tick a key
+    // was actually down covers both the still-held case and a brief gap between
+    // keys. holdH has decayed over that gap, so what carries over is the speed as
+    // it stands now, not as it was at release.
+    var carry = root.activeKind === "move" && root.holdH > 0
+                && (now - root.lastDownAt) <= root.carryMs
+    root.carryGap = root.lastDownAt > 0 ? now - root.lastDownAt : -1
+    root.carried = carry
+    root.lastDownAt = now                 // this press is itself such an event
+    if (carry) {
       root.startSweep(name, now, root.holdH)             // hand the speed over
     } else {
       root.beginHold("move", name, now)
@@ -826,13 +849,25 @@ Item {
   Process {
     id: luaConf
     command: ["hyprctl", "repl",
-      'return tostring((MOUSEKEYS and MOUSEKEYS.fast_tap_ms) or "")']
+      'local m = MOUSEKEYS or {} return "fast_tap_ms=" .. tostring(m.fast_tap_ms or "")'
+      + ' .. " carry_ms=" .. tostring(m.carry_ms or "")']
     stdout: StdioCollector {
+      // "fast_tap_ms=135 carry_ms=135" — named pairs so adding a knob is one term
+      // here and one in bindings.lua, and a missing one just keeps its default.
       onStreamFinished: {
-        var v = parseInt(String(text).trim(), 10)
-        if (v > 0 && v !== root.fastTapMs) {
-          root.fastTapMs = v
-          root.log("fastTapMs <- " + v + " (bindings.lua)")
+        var parts = String(text).trim().split(/\s+/)
+        for (var i = 0; i < parts.length; i++) {
+          var kv = parts[i].split("=")
+          if (kv.length !== 2) continue
+          var v = parseInt(kv[1], 10)
+          if (!(v > 0)) continue
+          if (kv[0] === "fast_tap_ms" && v !== root.fastTapMs) {
+            root.fastTapMs = v
+            root.log("fastTapMs <- " + v + " (bindings.lua)")
+          } else if (kv[0] === "carry_ms" && v !== root.carryMs) {
+            root.carryMs = v
+            root.log("carryMs <- " + v + " (bindings.lua)")
+          }
         }
       }
     }

@@ -128,7 +128,32 @@ x is halved because the rows are staggered by half a key. That makes a column
 step and a row step the same distance, so `7`→`0` and `7`→`N` both measure 3,
 as they do under your fingers.
 
-**Direction comes from a fit over the last three presses.** With
+**Which strategy turns presses into a direction is configurable**, because there
+is no obviously right answer and they are easy to compare. All five read the same
+press trail and return one velocity in key-widths per second:
+
+| | how it decides | character |
+|---|---|---|
+| `cpa` | fits each three presses to the axis where the two velocities are most equal and largest, then averages those | the original; smooths curvature without ignoring it |
+| `lsq` | least squares of position against time — the slope *is* the velocity | steadiest all-rounder, one stray key barely moves it |
+| `net` | first press to last, over elapsed time | calmest; blind to the path between, slowest to turn |
+| `pca` | dominant axis of the positions, speed from distance *along* it | the only one that reads mashing back and forth on one line as motion; the others average it to nothing |
+| `ewma` | every hop's own velocity, newest weighted most | turns fastest, twitchiest, no hard window edge |
+
+```lua
+MOUSEKEYS = {
+  mash_strategy = "cpa",                        -- steers the pointer
+  mash_debug_strategies = "cpa,lsq,pca,ewma",   -- also drawn, for comparison
+}
+```
+
+An unrecognised name is ignored rather than breaking the mode. Measured on the
+same four-press run across a row, they land within about 12% of each other
+(`ball` 1189–1355 px/s), so any of them is usable; the differences show up in
+how they handle curves, reversals and stray keys rather than in raw speed.
+
+**Direction comes from a fit over the last three presses** — this is `cpa`, the
+default. With
 `a = (p₂-p₁)/Δt₁` and `b = (p₃-p₂)/Δt₂`, pick the unit `u` maximising
 `(a·u)(b·u)`. For a given sum a product peaks when its terms are equal, so this
 asks for the direction along which the two velocities are as *equal* — and as
@@ -195,10 +220,18 @@ by default and **backtick** toggles it.
          *                               because they are directions, not places
 ```
 
-Yellow is a subvector that steers the ball, green the drive vector they average
-to, red a fit that was rejected and contributed nothing. Hits and vectors fade
-over `dbgFadeMs` (3s), so the trace of a gesture stays readable just after it
-ends.
+Yellow is a subvector, green the drive vector actually steering the pointer, red
+a fit that was rejected and contributed nothing. Hits and vectors fade over
+`dbgFadeMs` (3s), so the trace of a gesture stays readable just after it ends.
+
+**Every strategy in `mash_debug_strategies` is drawn too**, whether or not it is
+the one steering, so they can be read against each other live. Each gets a colour
+and a dash pattern derived from its own name — hue from a hash, with saturation
+and lightness pinned high so any name reads as bright — and a small white-on-grey
+label near the vector start. Labels are staggered both along the ray and across
+it: clamping them to the arrow put every label in one place whenever the vectors
+were short, and spreading them along the ray alone still collided whenever the
+strategies agreed, which is exactly when you most want to tell them apart.
 
 The red is the reason this is worth having. A reversal — `L K L`, say — fits to
 an axis with *exactly no motion along it*, so it steers nothing. Without the

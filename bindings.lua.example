@@ -21,9 +21,28 @@ hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
 --                moment before pressing the next, which otherwise stalls until
 --                the new key's first auto-repeat 250ms later. Independent of
 --                fast_tap_ms; they start out equal only by coincidence.
+--   mash_strategy          how mash turns key presses into one direction and
+--                          speed. All of them read the same press trail:
+--                            cpa   fit each 3 presses to the axis where the two
+--                                  velocities are most equal and largest, then
+--                                  average those (the original)
+--                            lsq   least squares of position against time; the
+--                                  slope is the velocity. Steadiest all-rounder
+--                            net   first press to last over elapsed time; calm,
+--                                  blind to the path between, slow to turn
+--                            pca   dominant axis of the positions, speed from
+--                                  distance along it. The only one that reads
+--                                  mashing back and forth on one line as motion
+--                            ewma  every hop's velocity, newest weighted most;
+--                                  turns fastest, twitchiest
+--   mash_debug_strategies  also computed and drawn in the debug view for
+--                          comparison, whether or not they are steering. Each
+--                          gets a colour and dash pattern from its own name.
 MOUSEKEYS = {
   fast_tap_ms = 135,
   carry_ms = 175,
+  mash_strategy = "cpa",
+  mash_debug_strategies = "cpa,lsq,pca,ewma",
 }
 
 -- Each keymap is a submap. The binds name ACTIONS, not keys, so remapping is a

@@ -79,10 +79,13 @@ Item {
   // comes out as ~1e-15 rather than 0, which would pass a bare "> 0" and be taken
   // as a valid contribution that happens to move nothing.
   readonly property real mashMinSpeed: 0.05   // key-widths/s below this is degenerate
+  readonly property int mashTrailMs: 1200     // presses kept for the strategies to read
+  readonly property int mashTrailMax: 16
+  readonly property var mashStrategies: ["cpa", "lsq", "net", "pca", "ewma"]
   readonly property int dbgFadeMs: 3000       // hits and vectors fade away over this
   readonly property real dbgPitch: 26         // px between grid cells
   readonly property real dbgScale: 4          // px drawn per key-width/second
-  readonly property real dbgMaxLen: 70        // ...but never longer than this
+  readonly property real dbgMaxLen: 92        // ...but never longer than this
   readonly property real dbgDeadLen: 26       // degenerate vectors have no speed to scale
   readonly property var dbgGlyphs: ({ bracketleft: "[", bracketright: "]",
                                       apostrophe: "'", semicolon: ";", comma: ",",
@@ -227,7 +230,10 @@ Item {
   // Always reassigned, never mutated in place: an in-place push on a `var`
   // property does not reliably survive, which quietly left the subvector list
   // empty while the presses themselves were arriving perfectly well.
-  property var mashHist: []                   // recent key-downs: {x, y, t}
+  property string mashStrategy: "cpa"         // which one drives the pointer
+  property var mashDebugStrategies: ["cpa", "lsq", "pca", "ewma"]
+  property var dbgStrats: ({})                // name -> {x, y, t}, newest result each
+  property var mashTrail: []                  // recent key-downs: {x, y, t}
   property var mashSubs: []                   // recent subvectors: {x, y, t}
   property real ballVX: 0
   property real ballVY: 0
@@ -278,13 +284,15 @@ Item {
       + " keysDown=" + (root.keysDown === "" ? "none" : root.keysDown.replace(/ /g, ","))
       + " ball=" + root.ballVX.toFixed(0) + "," + root.ballVY.toFixed(0)
       + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
+      + " strategy=" + root.mashStrategy
+      + " shown=[" + root.mashDebugStrategies.join(",") + "]"
       + " dbg=" + root.mashDebug + " labels=" + Object.keys(root.mashLabels).length
       + " dbgVecs=" + (function () {
           var ok = 0
           for (var i = 0; i < root.dbgVecs.length; i++) if (root.dbgVecs[i].ok) ok++
           return ok + "ok/" + (root.dbgVecs.length - ok) + "dead"
         })() + " dbgHits=" + root.dbgHits.length
-      + " mashN=" + root.mashCount + " histN=" + root.mashHist.length
+      + " mashN=" + root.mashCount + " trailN=" + root.mashTrail.length
       + " mashLog=[" + root.mashLog.trim() + "]"
   }
 
@@ -320,7 +328,7 @@ Item {
     keysPoll.stop()
     wheelPoll.stop()
     root.mashStop()
-    root.dbgHits = []; root.dbgVecs = []; root.dbgDriveAt = 0
+    root.dbgHits = []; root.dbgVecs = []; root.dbgDriveAt = 0; root.dbgStrats = ({})
     dbgTimer.stop()
     root.prevGap = Infinity
     root.lastActionAt = 0
@@ -827,12 +835,14 @@ Item {
     return ({ x: ux * v, y: uy * v, t: p3.t, ok: true })
   }
 
-  function dbgPrune(list, now) {
+  function dbgPruneMs(list, now, ms) {
     var keep = []
     for (var i = 0; i < list.length; i++)
-      if (now - list[i].t <= root.dbgFadeMs) keep.push(list[i])
+      if (now - list[i].t <= ms) keep.push(list[i])
     return keep
   }
+
+  function dbgPrune(list, now) { return root.dbgPruneMs(list, now, root.dbgFadeMs) }
 
   // 1 right after a press, 0 once it has faded out.
   function dbgAlpha(t, now) {
@@ -845,25 +855,149 @@ Item {
     return "rgba(" + r + "," + g + "," + b + "," + a.toFixed(2) + ")"
   }
 
+  // Colour and dash come from the strategy's name, so a strategy looks the same
+  // every run and two of them never collide by accident.
+  function dbgHash(str) {
+    var h = 2166136261
+    for (var i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i)
+      h = (h * 16777619) >>> 0
+    }
+    return h
+  }
+
+  function dbgHsl(h, sat, lum) {
+    function f(n) {
+      var k = (n + h * 12) % 12
+      var a = sat * Math.min(lum, 1 - lum)
+      return Math.round(255 * (lum - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)))))
+    }
+    return [f(0), f(8), f(4)]
+  }
+
+  readonly property var dbgDashes: [[], [7, 4], [2, 4], [12, 4, 3, 4], [1, 5], [6, 3, 1, 3]]
+
+  function dbgStratColor(name, a) {
+    // Hue is all the name picks: saturation and lightness stay pinned high so
+    // every strategy reads as bright, whatever name it is given.
+    var c = root.dbgHsl((root.dbgHash(name) % 360) / 360, 0.95, 0.62)
+    return root.dbgRgba(c[0], c[1], c[2], a)
+  }
+
+  function dbgStratDash(name) {
+    return root.dbgDashes[(root.dbgHash(name) >>> 9) % root.dbgDashes.length]
+  }
+
   function dbgGlyph(k) {
     if (!k) return ""
     if (root.dbgGlyphs[k]) return root.dbgGlyphs[k]
     return k.length === 1 ? k : k.charAt(0)
   }
 
-  // Magnitude-weighted mean of the subvectors still inside the window: longer
-  // hops count for more, and a mash that reverses cancels itself out.
-  function mashDrive(now) {
+  // ---- strategies -----------------------------------------------------------
+  // Each turns the recent presses into one velocity in key-widths per second, and
+  // they are interchangeable: bindings.lua picks which one steers the pointer, and
+  // any of them can be drawn in the debug view alongside it for comparison.
+
+  function mashWindow(now, ms) {
+    var out = []
+    for (var i = 0; i < root.mashTrail.length; i++)
+      if (now - root.mashTrail[i].t <= ms) out.push(root.mashTrail[i])
+    return out
+  }
+
+  // cpa — magnitude-weighted mean of the fitted subvectors. Longer hops count for
+  // more and a mash that reverses cancels itself out.
+  function mashCpa(now) {
     var sx = 0, sy = 0, n = 0
-    var keep = []
     for (var i = 0; i < root.mashSubs.length; i++) {
       var sv = root.mashSubs[i]
       if (now - sv.t > root.mashWindowMs) continue
-      keep.push(sv); sx += sv.x; sy += sv.y; n++
+      sx += sv.x; sy += sv.y; n++
     }
-    root.mashSubs = keep
-    if (n === 0) return null
-    return ({ x: sx / n, y: sy / n })
+    return n === 0 ? null : ({ x: sx / n, y: sy / n })
+  }
+
+  // lsq — least squares of position against time. The slope *is* a velocity, so
+  // direction and speed come out together, and one stray key barely moves it.
+  // The steadiest of these without being blind to the middle of the gesture.
+  function mashLsq(now) {
+    var w = root.mashWindow(now, root.mashWindowMs)
+    if (w.length < 3) return null
+    var tb = 0, xb = 0, yb = 0, i
+    for (i = 0; i < w.length; i++) { tb += w[i].t; xb += w[i].x; yb += w[i].y }
+    tb /= w.length; xb /= w.length; yb /= w.length
+    var stt = 0, stx = 0, sty = 0
+    for (i = 0; i < w.length; i++) {
+      var dt = (w[i].t - tb) / 1000
+      stt += dt * dt; stx += dt * (w[i].x - xb); sty += dt * (w[i].y - yb)
+    }
+    if (!(stt > 0)) return null
+    return ({ x: stx / stt, y: sty / stt })
+  }
+
+  // net — where the hand got to, over how long it took. Blind to the path in
+  // between, which makes it the calmest and the slowest to notice a turn.
+  function mashNet(now) {
+    var w = root.mashWindow(now, root.mashWindowMs)
+    if (w.length < 2) return null
+    var a = w[0], b = w[w.length - 1]
+    var dt = (b.t - a.t) / 1000
+    if (!(dt > 0)) return null
+    return ({ x: (b.x - a.x) / dt, y: (b.y - a.y) / dt })
+  }
+
+  // pca — dominant axis of the positions, with speed from the distance travelled
+  // *along* it. Alone among these it survives mashing back and forth on one line:
+  // the others average that to nothing, this reads it as motion on that axis.
+  function mashPca(now) {
+    var w = root.mashWindow(now, root.mashWindowMs)
+    if (w.length < 3) return null
+    var xb = 0, yb = 0, i
+    for (i = 0; i < w.length; i++) { xb += w[i].x; yb += w[i].y }
+    xb /= w.length; yb /= w.length
+    var cxx = 0, cyy = 0, cxy = 0
+    for (i = 0; i < w.length; i++) {
+      var dx = w[i].x - xb, dy = w[i].y - yb
+      cxx += dx * dx; cyy += dy * dy; cxy += dx * dy
+    }
+    if (!(cxx + cyy > 0)) return null
+    var th = 0.5 * Math.atan2(2 * cxy, cxx - cyy)
+    var ux = Math.cos(th), uy = Math.sin(th)
+    var first = w[0], last = w[w.length - 1]
+    if ((last.x - first.x) * ux + (last.y - first.y) * uy < 0) { ux = -ux; uy = -uy }
+    var span = 0
+    for (i = 1; i < w.length; i++)
+      span += Math.abs((w[i].x - w[i - 1].x) * ux + (w[i].y - w[i - 1].y) * uy)
+    var tot = (last.t - first.t) / 1000
+    if (!(tot > 0)) return null
+    return ({ x: ux * span / tot, y: uy * span / tot })
+  }
+
+  // ewma — every hop's own velocity, weighted so the newest dominate. No hard
+  // window edge, so it turns fastest, at the cost of being the twitchiest.
+  function mashEwma(now) {
+    var w = root.mashWindow(now, root.mashTrailMs)
+    if (w.length < 2) return null
+    var sx = 0, sy = 0, sw = 0
+    for (var i = 1; i < w.length; i++) {
+      var dt = (w[i].t - w[i - 1].t) / 1000
+      if (!(dt > 0)) continue
+      var wt = Math.exp(-(now - w[i].t) / root.mashWindowMs)
+      sx += wt * (w[i].x - w[i - 1].x) / dt
+      sy += wt * (w[i].y - w[i - 1].y) / dt
+      sw += wt
+    }
+    return sw > 0 ? ({ x: sx / sw, y: sy / sw }) : null
+  }
+
+  function mashCompute(name, now) {
+    if (name === "cpa") return root.mashCpa(now)
+    if (name === "lsq") return root.mashLsq(now)
+    if (name === "net") return root.mashNet(now)
+    if (name === "pca") return root.mashPca(now)
+    if (name === "ewma") return root.mashEwma(now)
+    return null
   }
 
   function mashPress(name, now) {
@@ -873,23 +1007,38 @@ Item {
     // Picking up again after a long pause is a new gesture, not a continuation of
     // wherever the fingers were last time.
     if (now - root.mashLastAt > root.mashWindowMs * 3) {
-      root.mashHist = []; root.mashSubs = []
+      root.mashTrail = []; root.mashSubs = []; root.dbgStrats = ({})
     }
     root.mashCount += 1
     root.mashLog = (root.mashLog + " " + name).slice(-70)
     root.mashLastAt = now
-    var hist = root.mashHist.concat([{ x: pos.x, y: pos.y, t: now }])
-    if (hist.length > 3) hist = hist.slice(hist.length - 3)
-    root.mashHist = hist
+    // One trail, long enough for the widest window any strategy asks for; each
+    // reads whatever slice of it it wants.
+    var hist = root.dbgPruneMs(root.mashTrail, now, root.mashTrailMs)
+                   .concat([{ x: pos.x, y: pos.y, t: now }])
+    if (hist.length > root.mashTrailMax) hist = hist.slice(hist.length - root.mashTrailMax)
+    root.mashTrail = hist
     root.dbgHits = root.dbgPrune(root.dbgHits, now).concat([{ name: name, t: now }])
     root.dbgLastAt = now
-    if (hist.length === 3) {
-      var sv = root.mashSubvector(hist[0], hist[1], hist[2])
+    root.mashSubs = root.dbgPruneMs(root.mashSubs, now, root.mashWindowMs)
+    if (hist.length >= 3) {
+      var sv = root.mashSubvector(hist[hist.length - 3], hist[hist.length - 2],
+                                  hist[hist.length - 1])
       root.dbgVecs = root.dbgPrune(root.dbgVecs, now).concat([sv])
       if (sv.ok) root.mashSubs = root.mashSubs.concat([sv])
     }
+    // Every strategy on the debug list is computed whether or not it is steering,
+    // which is the point: they can be compared against each other live.
+    var ds = ({})
+    for (var k in root.dbgStrats) ds[k] = root.dbgStrats[k]
+    for (var si = 0; si < root.mashDebugStrategies.length; si++) {
+      var sn = root.mashDebugStrategies[si]
+      var sr = root.mashCompute(sn, now)
+      if (sr) ds[sn] = ({ x: sr.x, y: sr.y, t: now })
+    }
+    root.dbgStrats = ds
     if (root.mashDebug) dbgTimer.start()
-    var drive = root.mashDrive(now)
+    var drive = root.mashCompute(root.mashStrategy, now)
     var s = drive ? Math.sqrt(drive.x * drive.x + drive.y * drive.y) : 0
     if (drive) { root.dbgDriveX = drive.x; root.dbgDriveY = drive.y; root.dbgDriveAt = now }
     var ux = 0, uy = 0
@@ -943,7 +1092,7 @@ Item {
 
   function mashStop() {
     root.ballStop()
-    root.mashHist = []; root.mashSubs = []
+    root.mashTrail = []; root.mashSubs = []
   }
 
   // ---- key routing ----------------------------------------------------------
@@ -1176,7 +1325,9 @@ Item {
       + 'local t = {} for a, k in pairs(L) do t[#t+1] = a .. ":" .. k end '
       + 'return "fast_tap_ms=" .. tostring(m.fast_tap_ms or "") '
       + '.. " carry_ms=" .. tostring(m.carry_ms or "") '
-      + '.. " labels=" .. table.concat(t, ",")']
+      + '.. " labels=" .. table.concat(t, ",") '
+      + '.. " mash_strategy=" .. tostring(m.mash_strategy or "") '
+      + '.. " mash_debug_strategies=" .. tostring(m.mash_debug_strategies or "")']
     stdout: StdioCollector {
       // "fast_tap_ms=135 carry_ms=135" — named pairs so adding a knob is one term
       // here and one in bindings.lua, and a missing one just keeps its default.
@@ -1185,6 +1336,18 @@ Item {
         for (var i = 0; i < parts.length; i++) {
           var kv = parts[i].split("=")
           if (kv.length !== 2) continue
+          if (kv[0] === "mash_strategy") {
+            if (root.mashStrategies.indexOf(kv[1]) >= 0) root.mashStrategy = kv[1]
+            continue
+          }
+          if (kv[0] === "mash_debug_strategies") {
+            var want = kv[1].split(",")
+            var good = []
+            for (var d = 0; d < want.length; d++)
+              if (root.mashStrategies.indexOf(want[d]) >= 0) good.push(want[d])
+            root.mashDebugStrategies = good
+            continue
+          }
           if (kv[0] === "labels") {
             var lm = ({})
             var lp = kv[1].split(",")
@@ -1526,7 +1689,7 @@ Item {
         ctx.textBaseline = "top"
         ctx.textAlign = "left"
         var lx = 8
-        var legend = [["subvector", 255, 214, 0], ["drive", 64, 255, 128],
+        var legend = [["subvector", 255, 214, 0], ["drive:" + root.mashStrategy, 64, 255, 128],
                       ["ignored", 255, 72, 72]]
         for (var g = 0; g < legend.length; g++) {
           ctx.fillStyle = root.dbgRgba(legend[g][1], legend[g][2], legend[g][3], 0.95)
@@ -1560,6 +1723,40 @@ Item {
         var da = root.dbgAlpha(root.dbgDriveAt, now)
         arrow(root.dbgDriveX, root.dbgDriveY, root.dbgRgba(64, 255, 128, da), da,
               dm * root.dbgScale)
+
+        // Every strategy on the debug list, in its own seeded colour and dash, so
+        // they can be read against each other and against the green one actually
+        // steering. Labels step further out the further down the list they are,
+        // which keeps them apart when two strategies agree and overlap.
+        function tag(txt, lx, ly, a) {
+          ctx.font = "9px monospace"
+          ctx.textAlign = "center"
+          ctx.textBaseline = "middle"
+          var tw = txt.length * 5.4 + 8
+          ctx.fillStyle = root.dbgRgba(60, 60, 60, 0.92 * a)
+          ctx.fillRect(lx - tw / 2, ly - 7, tw, 14)
+          ctx.fillStyle = root.dbgRgba(255, 255, 255, a)
+          ctx.fillText(txt, lx, ly)
+        }
+        for (var si = 0; si < root.mashDebugStrategies.length; si++) {
+          var sn = root.mashDebugStrategies[si]
+          var rec = root.dbgStrats[sn]
+          if (!rec) continue
+          var ra = root.dbgAlpha(rec.t, now)
+          var rm = Math.sqrt(rec.x * rec.x + rec.y * rec.y)
+          if (ra <= 0 || !(rm > 0)) continue
+          ctx.setLineDash(root.dbgStratDash(sn))
+          arrow(rec.x, rec.y, root.dbgStratColor(sn, ra), ra, rm * root.dbgScale)
+          ctx.setLineDash([])
+          // Staggered by position in the list, along the ray *and* across it.
+          // Clamping to the arrow put every label in one place whenever vectors
+          // were short; spreading along the ray alone still collided whenever
+          // strategies agreed, since the labels are wider than the step.
+          var at = 30 + si * 20
+          var off = (si - (root.mashDebugStrategies.length - 1) / 2) * 16
+          var nx = rec.x / rm, ny = rec.y / rm
+          tag(sn, ox + nx * at - ny * off, oy + ny * at + nx * off, ra)
+        }
 
         // Keys last so they sit over the vector origin rather than under it.
         ctx.textAlign = "center"

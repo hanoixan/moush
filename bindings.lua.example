@@ -41,7 +41,7 @@ hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
 MOUSEKEYS = {
   fast_tap_ms = 135,
   carry_ms = 175,
-  mash_strategy = "pca",
+  mash_strategy = "lsq",
   mash_debug_strategies = "cpa,lsq,pca,ewma",
 }
 

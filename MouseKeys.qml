@@ -135,7 +135,8 @@ Item {
   readonly property var actions: ["up", "down", "left", "right",
                                   "lmb", "mmb", "rmb",
                                   "scrollup", "scrolldown", "cycle",
-                                  "noop", "wheel", "debug"].concat(root.mashActions)
+                                  "noop", "wheel", "debug",
+                                  "strategy"].concat(root.mashActions)
   readonly property var actionDirs: ({ "up": [0, -1], "down": [0, 1],
                                        "left": [-1, 0], "right": [1, 0] })
 
@@ -1032,6 +1033,21 @@ Item {
     return sw > 0 ? ({ x: sx / sw, y: sy / sw }) : null
   }
 
+  // Cycles within the strategies the debug view is drawing, so the one being
+  // switched to is always visible to compare against — and always the one the
+  // legend highlights. The config stays the source of truth: this is a live
+  // experiment, and the next session takes its strategy from bindings.lua again.
+  function cycleStrategy() {
+    var list = root.mashDebugStrategies.length > 0 ? root.mashDebugStrategies
+                                                   : root.mashStrategies
+    if (list.length === 0) return
+    var i = list.indexOf(root.mashStrategy)          // -1 lands on the first
+    root.mashStrategy = list[(i + 1) % list.length]
+    root.pokeIdle()
+    root.log("strategy -> " + root.mashStrategy)
+    if (root.mashDebug) dbgTimer.start()
+  }
+
   function mashCompute(name, now) {
     if (name === "cpa") return root.mashCpa(now)
     if (name === "lsq") return root.mashLsq(now)
@@ -1240,6 +1256,10 @@ Item {
         if (root.mashDebug) dbgTimer.start()
         root.log("debug display " + (root.mashDebug ? "on" : "off"))
       }
+      return
+    }
+    if (name === "strategy") {
+      if (!repeat) root.cycleStrategy()
       return
     }
     if (name === "noop") {               // a stray key in mash mode, deliberately inert
@@ -1816,14 +1836,20 @@ Item {
         var fx = 8
         for (si = 0; si < root.mashDebugStrategies.length; si++) {
           var fn = root.mashDebugStrategies[si]
+          var act = (fn === root.mashStrategy)       // the one actually steering
           var live = root.dbgStrats[fn] ? 1 : 0
-          var fa = 0.45 + 0.55 * live
+          var fa = act ? 1 : (0.45 + 0.45 * live)
+          var fw = 20 + fn.length * 5.6
+          if (act) {
+            ctx.fillStyle = root.dbgRgba(255, 255, 255, 0.17)
+            ctx.fillRect(fx - 5, fy - 8, fw + 8, 16)
+          }
           ctx.strokeStyle = root.dbgStratColor(fn, fa)
-          ctx.lineWidth = 2
+          ctx.lineWidth = act ? 3 : 2
           ctx.setLineDash(root.dbgStratDash(fn))
           ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(fx + 16, fy); ctx.stroke()
           ctx.setLineDash([])
-          ctx.fillStyle = root.dbgRgba(255, 255, 255, fa)
+          ctx.fillStyle = root.dbgRgba(255, 255, 255, act ? 1 : 0.55)
           ctx.fillText(fn, fx + 20, fy)
           fx += 26 + fn.length * 5.6
         }

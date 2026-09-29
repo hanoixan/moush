@@ -112,8 +112,8 @@ rolls the pointer the way dragging a finger rolls a trackball.
 ```
  7 8 9 0 -          a  right click       w (held)  the mash becomes a wheel
 Y U I O P [         s  middle click      tab       next keymap
-H J K L ; '         d  left click
- N M , . /          5 6 R T F G V B      inert, to absorb a stray reach
+ H J K L ; '        d  left click        `         the debug display
+  N M , . /         z  next strategy     5 6 R T F G V B  inert, absorbing a stray reach
 ```
 
 Everything else passes through, so typing still works.
@@ -261,7 +261,10 @@ arbitrary speed.
 #### Seeing what mash is thinking
 
 While mash is the active keymap, a debug display sits in the upper left. It is on
-by default and **backtick** toggles it.
+by default and **backtick** toggles it. **`z` switches which strategy steers**,
+cycling through the ones being drawn so the new one is always on screen to compare
+against, and the legend highlights it. That is a live experiment rather than a
+setting: the next session takes its strategy from `mash_strategy` again.
 
 ```
 - subvector  - drive  - ignored          legend, in the colours below

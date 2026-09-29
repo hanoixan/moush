@@ -140,6 +140,10 @@ local function mousekeys_mash()
     hl.bind("W", hl.dsp.global("mousekeys:wheel"), { repeating = true, ignore_mods = true })
     hl.bind("TAB", hl.dsp.global("mousekeys:cycle"), { ignore_mods = true })
     hl.bind("grave", hl.dsp.global("mousekeys:debug"), { ignore_mods = true })
+    -- Cycles which strategy steers, among those the debug view is drawing, so the
+    -- new one is always on screen to compare. bindings.lua stays authoritative:
+    -- the next session starts from mash_strategy again.
+    hl.bind("Z", hl.dsp.global("mousekeys:strategy"), { ignore_mods = true })
   end)
 end
 mousekeys_mash()

@@ -234,9 +234,9 @@ by default and **backtick** toggles it.
 - subvector  - drive  - ignored          legend, in the colours below
 
   7  8  9  0  -                          the grid as it sits under your hand;
- Y  U  I  O  P  [                        white on grey, shaded green by when
- H  J  K  L  ;  '                        in the cluster each key was struck
-  N  M  ,  .  /
+ Y  U  I  O  P  [                        struck: white on a grey shaded green
+ H  J  K  L  ;  '                        by when in the cluster it was struck;
+  N  M  ,  .  /                          untouched: black on grey, receding
 
         \|/                              vectors, drawn from the grid centre
          *                               because they are directions, not places

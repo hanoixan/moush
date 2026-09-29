@@ -1869,7 +1869,11 @@ Item {
             var px = pad + (x4 / 4) * pitch, py = pad + y * pitch
             ctx.fillStyle = root.dbgRgba(bg[0], bg[1], bg[2], 1)
             ctx.beginPath(); ctx.arc(px, py, 9, 0, 2 * Math.PI); ctx.fill()
-            ctx.fillStyle = root.dbgRgba(255, 255, 255, hitT < 0 ? 0.42 : 1)
+            // Black on the grey for a key this cluster has not touched, so it
+            // recedes; white once it has been struck, over whatever green its
+            // timing earned it.
+            ctx.fillStyle = hitT < 0 ? root.dbgRgba(0, 0, 0, 1)
+                                     : root.dbgRgba(255, 255, 255, 1)
             ctx.fillText(root.dbgGlyph(root.mashLabels[nm]), px, py + 0.5)
           }
         }

@@ -821,7 +821,10 @@ Item {
     // the only one left when the timing itself is what went wrong.
     var sx = p3.x - p1.x, sy = p3.y - p1.y
     var sm = Math.sqrt(sx * sx + sy * sy)
-    var dead = ({ x: sm > 0 ? sx / sm : 0, y: sm > 0 ? sy / sm : 0, t: p3.t, ok: false })
+    // ox/oy: where the triple started, so the debug view can draw the subvector
+    // from the key it was measured from rather than from a shared origin.
+    var dead = ({ x: sm > 0 ? sx / sm : 0, y: sm > 0 ? sy / sm : 0,
+                  ox: p1.x, oy: p1.y, t: p3.t, ok: false })
     if (!(dt1 > 0) || !(dt2 > 0)) return dead          // struck together, no velocity
     var ax = (p2.x - p1.x) / dt1, ay = (p2.y - p1.y) / dt1
     var bx = (p3.x - p2.x) / dt2, by = (p3.y - p2.y) / dt2
@@ -833,7 +836,7 @@ Item {
     // closest points of approach, which is what projecting onto u gives.
     var v = ((ax * ux + ay * uy) + (bx * ux + by * uy)) / 2
     if (!(v > root.mashMinSpeed)) { dead.x = ux; dead.y = uy; return dead }   // reversal or restrike
-    return ({ x: ux * v, y: uy * v, t: p3.t, ok: true })
+    return ({ x: ux * v, y: uy * v, ox: p1.x, oy: p1.y, t: p3.t, ok: true })
   }
 
   function dbgPruneMs(list, now, ms) {
@@ -1716,28 +1719,32 @@ Item {
         // Vectors all radiate from the middle of the grid: they are directions,
         // not places, so a common origin makes them comparable at a glance.
         var ox = pad + 2.5 * pitch, oy = pad + 1.5 * pitch
-        function arrow(vx, vy, col, alpha, len) {
+        function arrow(sx, sy, vx, vy, col, alpha, len) {
           var m = Math.sqrt(vx * vx + vy * vy)
           if (!(m > 0) || alpha <= 0) return
           var L = Math.min(len, root.dbgMaxLen)
-          var ex = ox + (vx / m) * L, ey = oy + (vy / m) * L
+          var ex = sx + (vx / m) * L, ey = sy + (vy / m) * L
           ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2
-          ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ex, ey); ctx.stroke()
+          ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke()
           ctx.beginPath(); ctx.arc(ex, ey, 3, 0, 2 * Math.PI); ctx.fill()
         }
 
+        // Subvectors start at the first key of the triple they were measured from,
+        // so each one sits on the stretch of the gesture it describes. Held at half
+        // opacity: there is one per press and they are working detail, not the
+        // answer, so they should not crowd out the drive vector.
         for (var i = 0; i < root.dbgVecs.length; i++) {
           var sv = root.dbgVecs[i]
-          var a = root.dbgAlpha(sv.t, now)
+          var a = root.dbgAlpha(sv.t, now) * 0.5
           var mag = Math.sqrt(sv.x * sv.x + sv.y * sv.y)
-          arrow(sv.x, sv.y,
+          arrow(pad + sv.ox * pitch, pad + sv.oy * pitch, sv.x, sv.y,
                 sv.ok ? root.dbgRgba(255, 214, 0, a) : root.dbgRgba(255, 72, 72, a),
                 a, sv.ok ? mag * root.dbgScale : root.dbgDeadLen)
         }
         var dm = Math.sqrt(root.dbgDriveX * root.dbgDriveX + root.dbgDriveY * root.dbgDriveY)
         var da = root.dbgAlpha(root.dbgDriveAt, now)
-        arrow(root.dbgDriveX, root.dbgDriveY, root.dbgRgba(64, 255, 128, da), da,
-              dm * root.dbgScale)
+        arrow(ox, oy, root.dbgDriveX, root.dbgDriveY, root.dbgRgba(64, 255, 128, da),
+              da, dm * root.dbgScale)
 
         // Every strategy on the debug list, in its own colour and dash, so they can
         // be read against each other and against the green one actually steering.
@@ -1752,7 +1759,7 @@ Item {
           var rm = Math.sqrt(rec.x * rec.x + rec.y * rec.y)
           if (ra <= 0 || !(rm > 0)) continue
           ctx.setLineDash(root.dbgStratDash(sn))
-          arrow(rec.x, rec.y, root.dbgStratColor(sn, ra), ra, rm * root.dbgScale)
+          arrow(ox, oy, rec.x, rec.y, root.dbgStratColor(sn, ra), ra, rm * root.dbgScale)
           ctx.setLineDash([])
         }
 

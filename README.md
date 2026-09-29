@@ -221,7 +221,14 @@ by default and **backtick** toggles it.
 ```
 
 Yellow is a subvector, green the drive vector actually steering the pointer, red
-a fit that was rejected and contributed nothing. Hits and vectors fade over
+a fit that was rejected and contributed nothing.
+
+**Subvectors start at the first key of the triple they were measured from**, so
+each sits on the stretch of the gesture it describes and the chain of them traces
+the path the hand took. They are drawn at half opacity: there is one per press,
+and they are working detail rather than the answer, so they should not crowd out
+the drive vector. Only the aggregates — the drive vector and the strategies —
+radiate from the grid centre, since those are directions rather than places. Hits and vectors fade over
 `dbgFadeMs` (3s), so the trace of a gesture stays readable just after it ends.
 
 **Every strategy in `mash_debug_strategies` is drawn too**, whether or not it is

@@ -88,6 +88,9 @@ Item {
   readonly property real dbgMaxLen: 92        // ...but never longer than this
   readonly property real dbgDeadLen: 26       // degenerate vectors have no speed to scale
   readonly property real dbgFootH: 20         // strip along the bottom for the colour key
+  readonly property int dbgLogMax: 20         // events kept in the log, newest first
+  readonly property real dbgLogLineH: 11
+  readonly property real dbgLogH: root.dbgLogMax * root.dbgLogLineH + 20
   readonly property var dbgGlyphs: ({ bracketleft: "[", bracketright: "]",
                                       apostrophe: "'", semicolon: ";", comma: ",",
                                       period: ".", slash: "/", minus: "-", grave: "`" })
@@ -234,6 +237,8 @@ Item {
   property string mashStrategy: "cpa"         // which one drives the pointer
   property var mashDebugStrategies: ["cpa", "lsq", "pca", "ewma"]
   property var dbgStrats: ({})                // name -> {x, y, t}, newest result each
+  property var dbgLog: []                     // {g, dt, grid} newest first, for the log
+  property real dbgLogAt: 0                   // previous logged event, for the delta
   property var mashTrail: []                  // recent key-downs: {x, y, t}
   property var mashSubs: []                   // recent subvectors: {x, y, t}
   property real ballVX: 0
@@ -330,6 +335,7 @@ Item {
     wheelPoll.stop()
     root.mashStop()
     root.dbgHits = []; root.dbgVecs = []; root.dbgDriveAt = 0; root.dbgStrats = ({})
+    root.dbgLog = []; root.dbgLogAt = 0
     dbgTimer.stop()
     root.prevGap = Infinity
     root.lastActionAt = 0
@@ -906,6 +912,17 @@ Item {
     return root.dbgDashes[(i < 0 ? 0 : i) % root.dbgDashes.length]
   }
 
+  // The log is not the fade: entries stay until pushed out by newer ones, which is
+  // the point of having it. Deltas are between consecutive logged events, so a
+  // stray key shows up as a row of its own rather than silently widening a gap.
+  function dbgLogEvent(glyph, now, grid) {
+    var dt = root.dbgLogAt > 0 ? Math.round(now - root.dbgLogAt) : -1
+    root.dbgLogAt = now
+    root.dbgLog = [{ g: glyph, dt: dt, grid: grid }].concat(root.dbgLog)
+                    .slice(0, root.dbgLogMax)
+    if (root.mashDebug) dbgTimer.start()
+  }
+
   function dbgGlyph(k) {
     if (!k) return ""
     if (root.dbgGlyphs[k]) return root.dbgGlyphs[k]
@@ -1029,6 +1046,7 @@ Item {
     }
     root.mashCount += 1
     root.mashLog = (root.mashLog + " " + name).slice(-70)
+    root.dbgLogEvent(root.dbgGlyph(root.mashLabels[name]), now, true)
     root.mashLastAt = now
     // One trail, long enough for the widest window any strategy asks for; each
     // reads whatever slice of it it wants.
@@ -1216,7 +1234,10 @@ Item {
       }
       return
     }
-    if (name === "noop") return          // a stray key in mash mode, deliberately inert
+    if (name === "noop") {               // a stray key in mash mode, deliberately inert
+      if (!repeat) root.dbgLogEvent("\u00b7", now, false)   // logged, so a gap is explained
+      return
+    }
     if (name === "wheel") {
       // w has no dependable release either, so it is asked about rather than
       // waited on. Holding it turns the ball into a wheel instead of a pointer.
@@ -1689,14 +1710,14 @@ Item {
       x: 32
       y: 44
       width: root.dbgPitch * 5 + 2 * root.dbgMaxLen
-      height: root.dbgPitch * 3 + 2 * root.dbgMaxLen + root.dbgFootH
+      height: root.dbgPitch * 3 + 2 * root.dbgMaxLen + root.dbgFootH + root.dbgLogH
       onVisibleChanged: if (visible) { requestPaint(); dbgTimer.start() }
       onPaint: {
         var ctx = getContext("2d")
         ctx.reset()
         var now = Date.now()
         var pad = root.dbgMaxLen, pitch = root.dbgPitch
-        ctx.fillStyle = root.dbgRgba(0, 0, 0, 0.9)
+        ctx.fillStyle = root.dbgRgba(0, 0, 0, 1)
         ctx.fillRect(0, 0, dbgCanvas.width, dbgCanvas.height)
         ctx.strokeStyle = root.dbgRgba(255, 255, 255, 0.18)
         ctx.lineWidth = 1
@@ -1768,7 +1789,7 @@ Item {
         ctx.font = "9px monospace"
         ctx.textBaseline = "middle"
         ctx.textAlign = "left"
-        var fy = dbgCanvas.height - root.dbgFootH / 2
+        var fy = dbgCanvas.height - root.dbgLogH - root.dbgFootH / 2
         var fx = 8
         for (si = 0; si < root.mashDebugStrategies.length; si++) {
           var fn = root.mashDebugStrategies[si]
@@ -1782,6 +1803,32 @@ Item {
           ctx.fillStyle = root.dbgRgba(255, 255, 255, fa)
           ctx.fillText(fn, fx + 20, fy)
           fx += 26 + fn.length * 5.6
+        }
+
+        // Event log along the bottom, newest first: which key, and how long since
+        // the one below it. Reading the deltas is how a mash that felt fast but
+        // did not move anything gets explained.
+        var ly0 = dbgCanvas.height - root.dbgLogH + 4
+        ctx.strokeStyle = root.dbgRgba(255, 255, 255, 0.14)
+        ctx.lineWidth = 1
+        ctx.beginPath(); ctx.moveTo(6, ly0 - 3); ctx.lineTo(dbgCanvas.width - 6, ly0 - 3); ctx.stroke()
+        ctx.font = "9px monospace"
+        ctx.textBaseline = "top"
+        ctx.textAlign = "left"
+        ctx.fillStyle = root.dbgRgba(255, 255, 255, 0.45)
+        ctx.fillText("key", 10, ly0)
+        ctx.fillText("dt ms", 44, ly0)
+        for (var li = 0; li < root.dbgLog.length; li++) {
+          var e = root.dbgLog[li]
+          var ey2 = ly0 + (li + 1) * root.dbgLogLineH
+          // Newest at full strength, older rows stepped down so the top of the
+          // list reads first without the rest disappearing.
+          var ea = 0.4 + 0.6 * (1 - li / root.dbgLogMax)
+          ctx.fillStyle = e.grid ? root.dbgRgba(255, 255, 255, ea)
+                                 : root.dbgRgba(255, 170, 90, ea)
+          ctx.fillText(e.g, 10, ey2)
+          ctx.fillStyle = root.dbgRgba(200, 200, 200, ea * 0.85)
+          ctx.fillText(e.dt < 0 ? "-" : String(e.dt), 44, ey2)
         }
 
         // Keys last so they sit over the vector origin rather than under it.

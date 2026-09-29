@@ -258,6 +258,31 @@ that happened to move nothing — visible in the display as a vector that was
 never drawn, because its length was zero. Hence `mashMinSpeed`: a fit has to
 carry real speed to count, and anything below it is drawn red and ignored.
 
+**An event log runs along the bottom**, newest first, up to 20 entries: which key
+was struck and how many milliseconds since the one below it. Unlike everything
+else on the panel it does not fade — entries stay until pushed out — because its
+job is to be read after the fact.
+
+```
+key  dt ms
+L    167     slower, deliberate presses
+K    144
+J    306     a pause
+·    201     a stray null key: inert, but logged so the gap is explained
+O     54     a fast run
+I     47
+U     75
+Y     -      first press, nothing to measure against
+```
+
+Strays are logged in orange rather than skipped. A null key does nothing to the
+model, so without a row of its own it would show up only as an unexplained gap
+between two deltas.
+
+The panel's backdrop is fully opaque. At 96% the bright text underneath still read
+through clearly enough to fight with the log, and a debug overlay is worth more
+legible than see-through.
+
 The key names come from `bindings.lua`, which publishes the grid's labels next to
 the keys themselves, so a re-measured grid labels itself correctly with no change
 here.

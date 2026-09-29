@@ -55,7 +55,7 @@ Item {
   // A new direction within this of the last evidence a move key was down keeps
   // the speed already built up instead of starting the ramp again. Unrelated to
   // fastTapMs even when the numbers happen to match.
-  property int carryMs: 150                   // grace for handing speed to a new direction
+  property int carryMs: 175                   // grace for handing speed to a new direction
   readonly property int scrollEndDetents: 120 // a fast scroll re-tap runs to the end of the view
   readonly property int resyncMs: 130         // wait for a focus warp to settle, then re-read
   readonly property int landMs: 60            // ...then for the refreshed geometry to arrive

@@ -68,7 +68,7 @@ means `hyprctl reload` is enough to apply a change, with no shell restart:
 ```lua
 MOUSEKEYS = {
   fast_tap_ms = 135,   -- re-press the same key quicker than this to double-tap
-  carry_ms    = 150,   -- press a direction this soon after another to keep its speed
+  carry_ms    = 175,   -- press a direction this soon after another to keep its speed
 }
 ```
 
@@ -128,7 +128,7 @@ restart it. This needs an explicit bridge: the key that will sustain the sweep
 does not repeat for 250ms, so without one the motion would lapse after
 `repeatGapMs` and the speed would bleed away while waiting.
 
-**The handover survives letting go**, for `carry_ms` (150ms). Requiring the old key
+**The handover survives letting go**, for `carry_ms` (175ms). Requiring the old key
 to still be down meant releasing it a moment early threw the speed away: the new
 key took one `baseStep` and then nothing moved until its first auto-repeat landed
 250ms later. The window is measured from the last key *event* proving a direction

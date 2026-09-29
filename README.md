@@ -83,7 +83,38 @@ ahead of the cursor in that direction:
 | | search range | effect |
 |---|---|---|
 | **single press** | within the distance this press would travel | lands on an edge it would otherwise step over; otherwise moves the full distance |
-| **same key re-pressed within `fastTapMs` (150ms)** | unbounded | skitters to the next edge however far away |
+| **double-tap** — same key re-pressed within `fastTapMs` (150ms) | unbounded | skitters to the next edge however far away |
+
+Only edges **on screen** are candidates. Windows routinely extend past the
+display, and an edge you cannot reach is not a snap target: `warp()` clamps it
+back, so the press appears to do nothing — and worse, it hides the fact that the
+skitter has run out of edges.
+
+#### Walking off the edge of the screen
+
+When a double-tap's hop would land on the screen's own left or right edge, the
+plugin also runs Hyprland's directional focus — the same action Omarchy's
+`SUPER+LEFT` / `SUPER+RIGHT` binds perform. Focusing a neighbour warps the cursor
+into it, so a run of double-taps walks edge to edge across one window, then
+crosses into the next and carries on:
+
+```
+0 -> 12 -> 746 -> 760 -> 1489 -> 1503 -> [focus right, cursor lands at 1124]
+1124 -> 1489 -> 1503 -> [focus right, cursor lands at 1157]
+```
+
+Two details make this behave:
+
+- It **dispatches the action, not the keystroke.** Synthesising `SUPER+RIGHT`
+  would be swallowed — that combination is not bound inside the plugin's own
+  submap — so it calls `hl.dsp.focus({ direction = ... })` directly.
+- The warp to the screen edge happens **either way**. If there is no neighbour in
+  that direction the focus call is a no-op and the cursor simply rests at the
+  edge, so the gesture never dead-ends.
+
+Because the focus warp moves the cursor behind the plugin's back, the tracked
+position is re-read from the compositor `resyncMs` afterwards; without that the
+next press would teleport from a stale position.
 
 Edges come from Quickshell's Hyprland toplevels, whose `lastIpcObject` carries
 `at`/`size` **in process** — no subprocess, so the set is rebuilt on every

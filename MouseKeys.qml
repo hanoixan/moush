@@ -50,6 +50,7 @@ Item {
   readonly property real edgeEpsilon: 0.5     // an edge this close counts as already there
   readonly property int fastTapMs: 150        // re-pressing a key quicker than this skitters
   readonly property int scrollEndDetents: 120 // a fast scroll re-tap runs to the end of the view
+  readonly property int resyncMs: 130         // wait for a focus warp to settle, then re-read
   readonly property int sweepMs: 1500         // hold this long to cross one screen width
   readonly property real scrollMaxRate: 25    // detents/s at full acceleration
   readonly property int motionTickMs: 16      // how often held motion is integrated
@@ -258,6 +259,7 @@ Item {
   function finish() {
     motionTimer.stop()
     scrollPoll.stop()
+    resyncTimer.stop()
     idleTimer.stop()
     longPressTimer.stop()
     armPoll.stop()
@@ -318,6 +320,11 @@ Item {
   // keypress. Only windows on the focused monitor's active workspace count, and
   // each edge remembers the span it covers on the other axis: an edge you are
   // not level with is not one you could collide with.
+  function pushEdge(list, c, lo, hi, max) {
+    if (c < 0 || c > max) return
+    list.push({ c: c, lo: lo, hi: hi })
+  }
+
   function collectEdges() {
     var vx = [], hy = []
     var ws = Hyprland.focusedWorkspace ? String(Hyprland.focusedWorkspace.name) : ""
@@ -330,10 +337,13 @@ Item {
       var ax = o.at[0] - root.screenX, ay = o.at[1] - root.screenY
       var w = o.size[0], h = o.size[1]
       if (!(w > 0) || !(h > 0)) continue
-      vx.push({ c: ax, lo: ay, hi: ay + h })
-      vx.push({ c: ax + w, lo: ay, hi: ay + h })
-      hy.push({ c: ay, lo: ax, hi: ax + w })
-      hy.push({ c: ay + h, lo: ax, hi: ax + w })
+      // Windows routinely extend past the screen, and an edge you cannot reach
+      // is not a snap target: warp() would clamp it back and the press would do
+      // nothing — worse, it would hide the fact that we have run out of edges.
+      root.pushEdge(vx, ax, ay, ay + h, root.screenW - 1)
+      root.pushEdge(vx, ax + w, ay, ay + h, root.screenW - 1)
+      root.pushEdge(hy, ay, ax, ax + w, root.screenH - 1)
+      root.pushEdge(hy, ay + h, ax, ax + w, root.screenH - 1)
     }
     // The screen always bounds you, so there is always something to snap to.
     vx.push({ c: 0, lo: -1e9, hi: 1e9 })
@@ -390,11 +400,22 @@ Item {
     if (!isNaN(e)) {
       if (horiz) root.warp(e, root.curY)
       else root.warp(root.curX, e)
+      // A double-tap whose hop lands on the screen's own edge means "keep
+      // going", so hand off as well. If there is no neighbour that way it is a
+      // no-op and the cursor simply rests at the edge, which is why the warp
+      // happens either way.
+      if (unbounded && horiz && (e <= 0 || e >= root.screenW - 1)) root.focusNeighbour(sign)
       return
     }
-    // An unbounded step only ever lands on edges; the screen is in the list, so
-    // running out means there is nowhere further to go.
-    if (unbounded) return
+    if (unbounded) {
+      // Nowhere left to snap means the double-tap ran into the screen edge, so
+      // take it as "keep going" and hand off to Hyprland's directional focus —
+      // the very action Omarchy's SUPER+LEFT/RIGHT binds run. Synthesising that
+      // keystroke instead would do nothing: SUPER+RIGHT is not bound inside our
+      // own submap, so the key would just be swallowed.
+      if (horiz) root.focusNeighbour(sign)
+      return
+    }
     root.warp(root.curX + dir[0] * px, root.curY + dir[1] * px)
   }
 
@@ -410,6 +431,14 @@ Item {
     root.sentX = ix
     root.sentY = iy
     root.hypr("hl.dsp.cursor.move({ x = " + ix + ", y = " + iy + " })")
+  }
+
+  // Focusing a neighbour warps the cursor into it, which leaves our tracked
+  // position stale — so re-read it once the warp has settled.
+  function focusNeighbour(sign) {
+    root.hypr('hl.dsp.focus({ direction = "' + (sign > 0 ? "r" : "l") + '" })')
+    root.log("focus " + (sign > 0 ? "right" : "left"))
+    resyncTimer.restart()
   }
 
   // ---- key routing ----------------------------------------------------------
@@ -588,6 +617,18 @@ Item {
 
 
 
+
+  Timer {
+    id: resyncTimer
+    interval: root.resyncMs
+    onTriggered: {
+      if (!root.active) return
+      root.cursorKnown = false      // let cursorProc's result through
+      root.sentX = -1               // and force the next warp to dispatch
+      root.sentY = -1
+      cursorProc.running = true
+    }
+  }
 
   Timer {
     id: scrollPoll

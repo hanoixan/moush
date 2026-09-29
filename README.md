@@ -159,13 +159,22 @@ address** — never by direction.
   inside, and Hyprland only warps when focusing a window the pointer is *outside*
   of, so this costs no cursor movement at all.
 
-  Which window that is gets decided one pixel **along the direction of travel**,
-  not at the cursor itself. A window's far edge sits at `x + w`, one past its last
-  pixel, so arriving on it from the other side lands *outside* the window just
-  reached: snapping leftwards onto a window's right edge left it unfocused, while
-  the mirror case going right worked, because a left edge is a window's first
-  pixel. Nudging also settles which window an edge belongs to when two of them
-  touch with no gap — the one being entered wins.
+  Which window that is comes from **the cursor's own position first**, because
+  what gets focused has to be what the pointer is visually over — that is where a
+  click will land.
+
+  Only when the cursor sits over *nothing* does the direction of travel decide,
+  probed one pixel along it. That happens on a gap, or on a window's far edge,
+  which is at `x + w` and therefore one past the last pixel: arriving there from
+  the other side leaves you just outside the window you reached, which is why
+  snapping leftwards onto a window's right edge used to leave it unfocused while
+  the mirror going right worked (a left edge being a window's first pixel). The
+  nudge also settles which window an edge belongs to when two of them touch with
+  no gap — the one being entered wins.
+
+  Probing the nudge *first* is wrong, and was: a short floating window's top edge
+  is already inside it, so nudging upwards escaped to the tiled window behind and
+  focused something the pointer was not over.
 
   When windows overlap, the one on top wins: floating above tiled, and among
   equals the more recently focused (`focusHistoryID`). Hyprland's client list is
@@ -233,6 +242,15 @@ The user never sees the centre excursion, because `curX`/`curY` never adopt it
 and the visible pointer is the plugin's own marker
 (`cursor:hide_on_key_press` hides the real one) — the marker goes from the old
 edge straight to the new one.
+
+**Focus is re-resolved once the pointer has landed.** The landing is correct
+relative to the window crossed into, but the pan that revealed it slid that window
+*underneath* anything floating, which does not pan with the row — so the pointer
+can come to rest over a float while focus sits on the tiled window behind it.
+Observed: crossing right put the pointer at `790 + 30 = 820`, inside a float
+spanning `733..1532`, with focus left on the tiled window. Re-resolving at the
+final position settles in one further pass, since the second attempt finds the
+window it just focused and stops.
 
 **The whole edge list is refreshed too**, not just the pointer. A pan moves every
 window on the workspace — one went from `12` to `-701` — so the coordinates

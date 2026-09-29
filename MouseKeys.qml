@@ -149,6 +149,7 @@ Item {
   // for, which way we were going, and the cross-axis position to preserve.
   property string crossTarget: ""
   property bool crossHoriz: true
+  property int crossSign: 1
   property real crossOff: 0                   // where in the window to sit, along travel
   property real crossCross: 0                 // screen coordinate to hold on the other axis
 
@@ -532,29 +533,39 @@ Item {
   // A skitter that lands inside a window nobody is focused on: adopt it. The
   // pointer is already inside, and Hyprland only warps when focusing a window
   // the pointer is *outside* of, so this costs no cursor movement at all.
-  // Probe one pixel *along the direction of travel* rather than at the cursor.
-  // A window's far edge sits at x + w, one past its last pixel, so arriving on
-  // it from the other side lands outside the window we just reached: snapping
-  // leftwards onto a window's right edge left it unfocused, while the mirror
-  // case going right worked, because a left edge is the window's first pixel.
-  // Nudging also settles which window an edge belongs to when two of them touch
-  // with no gap — the one being entered wins, not whichever was listed last.
-  function focusLanding(horiz, sign) {
-    var px = root.curX + (horiz ? sign : 0)
-    var py = root.curY + (horiz ? 0 : sign)
-    // Windows overlap, so pick the one actually on top rather than whichever the
-    // compositor happened to list last — that order is not z-order (a window
-    // focused three ago was listed ahead of the one focused last). Floating sits
-    // above tiled in Hyprland, and among equals the more recently focused one is
-    // the one you can see.
+  // Windows overlap, so pick the one actually on top at a point rather than
+  // whichever the compositor listed last — that order is not z-order (a window
+  // focused three ago was listed ahead of the one focused last). Floating sits
+  // above tiled in Hyprland, and among equals the more recently focused one is
+  // the one you can see.
+  function topmostAt(x, y) {
     var best = null
     var list = root.windowsHere()
     for (var i = 0; i < list.length; i++) {
       var c = list[i]
-      if (px < c.x || px >= c.x + c.w) continue
-      if (py < c.y || py >= c.y + c.h) continue
+      if (x < c.x || x >= c.x + c.w) continue
+      if (y < c.y || y >= c.y + c.h) continue
       if (!best || (c.floating !== best.floating ? c.floating : c.age < best.age)) best = c
     }
+    return best
+  }
+
+  // What ends up focused must be what the pointer is visually over, because that
+  // is where a click will land. So the cursor's own position is asked first.
+  //
+  // Only when it sits over nothing — a gap, or a window's far edge, which is at
+  // x + w and therefore one past the last pixel — does the window being *entered*
+  // decide it, probed one pixel along the direction of travel. That case is why
+  // snapping leftwards onto a window's right edge used to leave it unfocused
+  // while the mirror going right worked, a left edge being a window's first pixel.
+  //
+  // Probing the nudge first is wrong, and was: landing on a short floating
+  // window's top edge is already *inside* it, so nudging up escaped to the tiled
+  // window behind and focused something the pointer was not over.
+  function focusLanding(horiz, sign) {
+    var best = root.topmostAt(root.curX, root.curY)
+    if (!best) best = root.topmostAt(root.curX + (horiz ? sign : 0),
+                                     root.curY + (horiz ? 0 : sign))
     if (best) {
       var t = best
       if (t.address === root.focusedAddress()) return   // already ours, nothing moves
@@ -564,6 +575,7 @@ Item {
       if (!root.focusWindow(t.address)) return
       root.crossTarget = t.address
       root.crossHoriz = horiz
+      root.crossSign = sign
       root.crossOff = horiz ? root.curX - t.x : root.curY - t.y
       root.crossCross = horiz ? root.curY : root.curX
       root.log("focus landing " + t.address)
@@ -606,6 +618,7 @@ Item {
     if (!root.focusWindow(best.address)) return false
     root.crossTarget = best.address
     root.crossHoriz = horiz
+    root.crossSign = sign
     // Entering edge: crossing rightwards puts us on the window's left side.
     root.crossOff = sign > 0 ? 0 : (horiz ? best.w : best.h) - 1
     root.crossCross = cross
@@ -641,6 +654,12 @@ Item {
       if (horiz) root.warp(travel, cross)
       else root.warp(cross, travel)
       root.log("landed at " + Math.round(travel) + "," + Math.round(cross))
+      // Landing is correct relative to the window we crossed into, but the pan
+      // that brought it here slid that window *under* anything floating, which
+      // does not pan with the row. So what the pointer now sits over may not be
+      // what is focused — re-resolve at the final position. This settles in one
+      // more pass: the second call finds the window it just focused and stops.
+      root.focusLanding(horiz, root.crossSign)
       return
     }
     // It went away mid-flight; fall back to believing the compositor.

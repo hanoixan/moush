@@ -1,40 +1,46 @@
 -- Mouse keys: SUPER + M enters. A short press starts the session when the chord
 -- is released and it exits after 2s idle; holding it past 500ms starts the
 -- session right then and latches until you hit SUPER + M again.
--- Three keymaps, cycled with Tab (the choice persists):
---            move       buttons L/M/R   scroll up/down
---   left     i j k l      c  x  z         y    h
---   right    w a s d      ,  .  /         r    f
---   arrows   arrows       d  s  a         PgUp PgDn
--- submap_universal keeps this live inside the plugin's own submap, so the same
--- chord exits. M is one of the few SUPER combinations Omarchy leaves free, and
--- it is not one of the keys the plugin binds in-session.
 hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
   { submap_universal = true, description = "Mouse keys" })
 
--- This submap IS the plugin's input mechanism, not merely a shield. The overlay
--- takes no keyboard focus, because a layer surface with exclusive focus makes
--- Hyprland swallow every click the plugin injects, and with OnDemand focus it
--- receives only one key event per session. Movement rides key repeat; see below.
-hl.define_submap("mousekeys", function()
-  hl.bind("CTRL + ALT + Escape", hl.dsp.submap("reset"))  -- emergency exit
+-- Each keymap is a submap. The binds name ACTIONS, not keys, so remapping is a
+-- one-line edit here and needs no change to the plugin — and adding a fourth
+-- keymap is just another call plus its name in shell.json.
+--
+-- move/scroll keys repeat so a held key sweeps; buttons and cycle fire once.
+-- ignore_mods keeps the key reaching the plugin whatever you are holding, which
+-- is also what lets Shift+scroll be horizontal and Ctrl+scroll zoom in the app.
+-- Scroll keys additionally bind their RELEASE, because a wheel event cancels
+-- Hyprland's key repeat, so the plugin cannot see the key is still down; a
+-- `release = true` bind will not dispatch a global shortcut, so it calls back in.
+local function mousekeys_map(name, k)
+  hl.define_submap("mousekeys-" .. name, function()
+    hl.bind("CTRL + ALT + Escape", hl.dsp.submap("reset"))          -- emergency exit
+    for action, key in pairs({ up = k.up, down = k.down, left = k.left, right = k.right }) do
+      hl.bind(key, hl.dsp.global("mousekeys:" .. action), { repeating = true, ignore_mods = true })
+    end
+    for action, key in pairs({ scrollup = k.scrollup, scrolldown = k.scrolldown }) do
+      hl.bind(key, hl.dsp.global("mousekeys:" .. action), { repeating = true, ignore_mods = true })
+      hl.bind(key, hl.dsp.exec_cmd("omarchy-shell -q shell call mousekeys scrollstop ''"),
+        { release = true, ignore_mods = true })
+    end
+    for action, key in pairs({ lmb = k.lmb, mmb = k.mmb, rmb = k.rmb }) do
+      hl.bind(key, hl.dsp.global("mousekeys:" .. action), { ignore_mods = true })
+    end
+    hl.bind(k.cycle or "TAB", hl.dsp.global("mousekeys:cycle"), { ignore_mods = true })
+  end)
+end
 
-  -- Movement and scroll keys repeat: the plugin rides Hyprland's key repeat
-  -- instead of waiting for a release, because a `release = true` bind never
-  -- fires when it dispatches hl.dsp.global.
-  -- ignore_mods so one bind per key matches whatever modifiers are held. That
-  -- matters twice over: the key still reaches the plugin instead of falling
-  -- through and typing a character, and the modifiers you are holding ride along
-  -- on the pointer events the plugin injects — so Shift+scroll is horizontal and
-  -- Ctrl+scroll zooms, in whatever app is underneath.
-  for _, k in ipairs({ "I", "J", "K", "L", "Y", "H",
-                       "W", "A", "S", "D", "R", "F",
-                       "UP", "DOWN", "LEFT", "RIGHT", "Prior", "Next" }) do
-    hl.bind(k, hl.dsp.global("mousekeys:k" .. k), { repeating = true, ignore_mods = true })
-  end
-
-  -- Buttons and the keymap switch fire once per press.
-  for _, k in ipairs({ "C", "X", "Z", "comma", "period", "slash", "TAB" }) do
-    hl.bind(k, hl.dsp.global("mousekeys:k" .. k), { ignore_mods = true })
-  end
-end)
+mousekeys_map("left", {
+  up = "I", down = "K", left = "J", right = "L",
+  lmb = "C", mmb = "X", rmb = "Z", scrollup = "Y", scrolldown = "H",
+})
+mousekeys_map("right", {
+  up = "W", down = "S", left = "A", right = "D",
+  lmb = "comma", mmb = "period", rmb = "slash", scrollup = "R", scrolldown = "F",
+})
+mousekeys_map("arrows", {
+  up = "UP", down = "DOWN", left = "LEFT", right = "RIGHT",
+  lmb = "D", mmb = "S", rmb = "A", scrollup = "Prior", scrolldown = "Next",
+})

@@ -57,8 +57,8 @@ Item {
   readonly property int repeatGapMs: 55       // movement: longer gap than this => key is up
                                               // (repeats land 25-34ms apart, so 55 is safe
                                               //  and halves the coast after release)
-  readonly property int scrollPollMs: 80      // how often we ask if a scroll key is still down
-  readonly property int scrollGapMs: 150      // scroll: grace between polls before calling it up
+  readonly property int scrollArmMs: 250      // held this long before auto-scroll starts
+  readonly property int scrollMaxMs: 8000     // safety cap if the release callback never lands
   readonly property int holdChainMs: 400      // same key again within this => same hold, keep its clock
   readonly property int takeoverGraceMs: 320  // bridges a new key's repeat delay so motion never lapses
   readonly property int idleMs: 2000          // short-press session idles out; 0 disables
@@ -69,34 +69,61 @@ Item {
 
   // ---- keymaps --------------------------------------------------------------
   // evdev keycodes (nativeScanCode - 8), so the maps are layout-independent.
-  readonly property var keymaps: ({
-    "left":   { up: 23, left: 36, down: 37, right: 38,     // i j k l
-                lmb: 46, mmb: 45, rmb: 44,                 // c x z
-                su: 21, sd: 35 },                          // y h
-    "right":  { up: 17, left: 30, down: 31, right: 32,     // w a s d
-                lmb: 51, mmb: 52, rmb: 53,                 // , . /
-                su: 19, sd: 33 },                          // r f
-    "arrows": { up: 103, left: 105, down: 108, right: 106,  // arrow keys
-                lmb: 32, mmb: 31, rmb: 30,                 // d s a
-                su: 104, sd: 109 }                         // PgUp PgDn
-  })
-  readonly property var modeOrder: ["left", "right", "arrows"]
-  readonly property int keyTab: 15
-  // Keysyms for the scroll keys, for hl.is_key_down polling.
-  readonly property var keySyms: ({ "21": "y", "35": "h", "19": "r", "33": "f",
-                                    "104": "Prior", "109": "Next" })
+  // Keys live in bindings.lua, not here. Each keymap is a Hyprland submap whose
+  // binds point at these action names, so remapping a key is a one-line edit in
+  // that file and needs no change to this plugin.
+  readonly property var actions: ["up", "down", "left", "right",
+                                  "lmb", "mmb", "rmb",
+                                  "scrollup", "scrolldown", "cycle"]
+  readonly property var actionDirs: ({ "up": [0, -1], "down": [0, 1],
+                                       "left": [-1, 0], "right": [1, 0] })
 
   // Chord keys. Super is only ever the chord; Left Alt is too, and since no
   // button is a modifier any more it has no second meaning to disambiguate.
 
   // ---- persisted setting ------------------------------------------------------
+  // "Settings are inline on the entry" — the shell README's storage rule 3. The
+  // shell object is injected, so we read our own plugins[] entry off it.
+  readonly property var settings: {
+    var cfg = root.shell && root.shell.shellConfig ? root.shell.shellConfig : null
+    var list = cfg && cfg.plugins ? cfg.plugins : []
+    for (var i = 0; i < list.length; i++)
+      if (list[i] && String(list[i].id) === "mousekeys") return list[i]
+    return ({})
+  }
+  // The entry chord's release has to be polled (see chordProbe), which means the
+  // plugin needs the chord's keysyms even though Hyprland owns the bind. Change
+  // the bind and these move with it, from shell.json. Either list may hold
+  // several syms — any one counts, which is how Super_L/Super_R and the shifted
+  // "M" are covered. An empty chordMods means the key stands alone.
+  readonly property var chordKey: (root.settings.chordKey && root.settings.chordKey.length > 0)
+    ? root.settings.chordKey : ["m", "M"]
+  readonly property var chordMods: root.settings.chordMods !== undefined
+    ? root.settings.chordMods : ["Super_L", "Super_R"]
+
+  // "(is_key_down(a) or is_key_down(b)) and (is_key_down(c) or ...)"
+  readonly property string chordExpr: {
+    function any(syms) {
+      var parts = []
+      for (var i = 0; i < syms.length; i++)
+        parts.push('hl.is_key_down("' + String(syms[i]).replace(/"/g, '') + '")')
+      return "(" + parts.join(" or ") + ")"
+    }
+    var e = any(root.chordKey)
+    if (root.chordMods.length > 0) e = e + " and " + any(root.chordMods)
+    return "return tostring((" + e + ") or false)"
+  }
+
+  readonly property var keymapNames: (root.settings.keymaps && root.settings.keymaps.length > 0)
+    ? root.settings.keymaps : ["left", "right", "arrows"]
+
   property string keymap: "arrows"
   readonly property string statePath: Quickshell.statePath("mousekeys.json")
 
   function loadState(text) {
     try {
       var s = JSON.parse(text)
-      if (s && root.modeOrder.indexOf(String(s.keymap)) !== -1) root.keymap = String(s.keymap)
+      if (s && root.keymapNames.indexOf(String(s.keymap)) !== -1) root.keymap = String(s.keymap)
     } catch (e) {}
   }
 
@@ -105,14 +132,14 @@ Item {
   }
 
   function cycleKeymap() {
-    var i = root.modeOrder.indexOf(root.keymap)
-    root.keymap = root.modeOrder[(i + 1) % root.modeOrder.length]
+    var i = root.keymapNames.indexOf(root.keymap)
+    root.keymap = root.keymapNames[(i + 1) % root.keymapNames.length]
+    if (root.opened) root.hypr('hl.dsp.submap("mousekeys-' + root.keymap + '")')
     root.saveState()
     root.log("keymap -> " + root.keymap)
     hintTimer.restart()
   }
 
-  readonly property var km: root.keymaps[root.keymap] || root.keymaps["right"]
 
   // ---- session state ----------------------------------------------------------
   property bool opened: false                 // overlay mapped (from the chord press)
@@ -126,8 +153,8 @@ Item {
   property real curX: 0
   property real curY: 0
   property bool cursorKnown: false
-  property real lastKeyAt: 0                  // for telling a repeat from a fresh press
-  property int lastKeyCode: -1
+  property real lastActionAt: 0               // for telling a repeat from a fresh press
+  property string lastAction: ""
   // Speed model: v = k*holdH, where holdH is how long the current contiguous
   // hold has run, growing while a key is down and receding when none is. With
   // k = 2*W/T^2 a hold of T seconds integrates to exactly one screen width, and
@@ -137,16 +164,14 @@ Item {
   property bool holdConfirmed: false          // a repeat proved this is a real hold
   property real holdPressAt: 0                // when the current press began
   property real downUntil: 0                  // held as long as now() < this
-  property string scrollSym: ""                // keysym polled while a scroll key is held
   property real lastTickAt: 0                 // for integrating against real elapsed time
   property real prevGap: Infinity              // gap before the previous event, for fast-tap
-  property int lastHoldCode: -1               // for chaining a press to its own first repeat
+  property string lastHoldAction: ""           // for chaining a press to its own first repeat
   property string activeKind: ""               // "move" | "scroll"
   property var moveDir: [0, 0]
   property var edgesX: []                     // vertical edges: { c, lo, hi }, screen-local
   property var edgesY: []                     // horizontal edges, likewise
   property int scrollSign: 0
-  property real scrollAcc: 0                  // fractional detents awaiting emission
   property real sentX: -1                     // last position actually dispatched
   property real sentY: -1
 
@@ -158,10 +183,10 @@ Item {
   function probe() {
     return "opened=" + root.opened + " active=" + root.active + " sticky=" + root.sticky
       + " keymap=" + root.keymap
-      + " kmUp=" + (root.km ? root.km.up : "NOKM")
       + " idle=" + idleTimer.running + " long=" + longPressTimer.running
       + " moving=" + motionTimer.running + " held=" + root.holdConfirmed
       + " edges=" + root.edgesX.length + "/" + root.edgesY.length
+      + " autoscroll=" + autoScroll.running
       + " holdH=" + root.holdH.toFixed(2) + " v=" + root.speedFor(root.holdH).toFixed(0)
   }
 
@@ -189,13 +214,12 @@ Item {
     root.screenY = scr.y
     root.screenW = scr.width
     root.screenH = scr.height
-    root.lastKeyCode = -1
-    root.lastHoldCode = -1
+    root.lastAction = ""
+    root.lastHoldAction = ""
     root.prevGap = Infinity
-    root.lastKeyAt = 0
+    root.lastActionAt = 0
     root.holdH = 0
     root.holdConfirmed = false
-    root.scrollAcc = 0
     root.activeKind = ""
     root.sentX = -1
     root.sentY = -1
@@ -212,7 +236,7 @@ Item {
     // the wheel events we synthesize don't reach SUPER+scroll bindings.
     // The submap is the input mechanism now, not just a shield: every movement,
     // button and scroll key is bound inside it.
-    root.hypr('hl.dsp.submap("mousekeys")')
+    root.hypr('hl.dsp.submap("mousekeys-' + root.keymap + '")')
     root.opened = true
   }
 
@@ -256,7 +280,7 @@ Item {
 
   function finish() {
     motionTimer.stop()
-    scrollPoll.stop()
+    root.stopScroll()
     resyncTimer.stop()
     idleTimer.stop()
     longPressTimer.stop()
@@ -296,19 +320,6 @@ Item {
     var T = root.sweepMs / 1000
     var W = root.screenW > 0 ? root.screenW : 1920
     return (2 * W / (T * T)) * h
-  }
-
-  function scrollRateFor(h) {
-    return root.scrollMaxRate * h / (root.sweepMs / 1000)
-  }
-
-  function dirFor(code) {
-    var m = root.km
-    if (code === m.up) return [0, -1]
-    if (code === m.down) return [0, 1]
-    if (code === m.left) return [-1, 0]
-    if (code === m.right) return [1, 0]
-    return null
   }
 
   // ---- movement -------------------------------------------------------------
@@ -373,9 +384,9 @@ Item {
   // already built up. The key that will sustain the sweep does not repeat for
   // input:repeat_delay (250ms), so downUntil has to bridge that gap or motion
   // lapses after repeatGapMs.
-  function startSweep(code, now, h) {
+  function startSweep(name, now, h) {
     root.activeKind = "move"
-    root.lastHoldCode = code
+    root.lastHoldAction = name
     root.holdH = Math.min(root.sweepMs / 1000, h)
     root.holdPressAt = now - root.holdH * 1000   // keep holdH ~ elapsed invariant
     root.holdConfirmed = true
@@ -447,10 +458,10 @@ Item {
   // like a fresh press. Carrying the original press time forward when the same
   // key reappears within holdChainMs keeps the hold clock honest — without it a
   // 1.5s hold measured only 1.3s of acceleration and fell ~20% short.
-  function beginHold(kind, code, now) {
-    var chained = (code === root.lastHoldCode) && (now - root.holdPressAt <= root.holdChainMs)
+  function beginHold(kind, name, now) {
+    var chained = (name === root.lastHoldAction) && (now - root.holdPressAt <= root.holdChainMs)
     root.activeKind = kind
-    root.lastHoldCode = code
+    root.lastHoldAction = name
     if (!chained) root.holdPressAt = now
     root.holdConfirmed = false
     root.downUntil = now + root.repeatGapMs
@@ -470,98 +481,85 @@ Item {
     motionTimer.start()
   }
 
-  function handleKey(code) {
+  function handleAction(name) {
     if (!root.active) return        // still arming; the chord owns the keyboard
-    var m = root.km
+    root.log("action " + name)
     var now = Date.now()
-    var sameKey = (code === root.lastKeyCode)
-    var gap = sameKey ? (now - root.lastKeyAt) : Infinity
-    var repeat = sameKey && (gap <= root.repeatGapMs)
-    // Re-pressing the same key quicker than fastTapMs means "go all the way":
-    // the next edge for movement, the end of the view for scrolling.
-    //
-    // The `prevGap` term is load-bearing. Auto-repeat normally arrives every
-    // 25-34ms and is caught by `repeat` above, but a repeat delayed under load
-    // lands in the fast-tap band and would teleport a sweeping cursor to an edge
-    // — measured, an identical 0.75s sweep covering 427px, 557px, then 746px
-    // (exactly a window edge). A deliberate re-press can only follow a release,
-    // so it is never preceded by another event one repeat-interval earlier;
-    // a delayed repeat always is.
-    var fastTap = sameKey && gap < root.fastTapMs && root.prevGap > root.repeatGapMs
+    var same = (name === root.lastAction)
+    var gap = same ? (now - root.lastActionAt) : Infinity
+    var repeat = same && (gap <= root.repeatGapMs)
+    // Re-triggering the same action quicker than fastTapMs means "go all the
+    // way": the next edge for movement, the end of the view for scrolling. The
+    // prevGap term rejects a repeat delayed under load, which lands in the same
+    // band and would otherwise teleport a sweeping cursor to an edge.
+    var fastTap = same && gap < root.fastTapMs && root.prevGap > root.repeatGapMs
     root.prevGap = gap
-    root.lastKeyAt = now
-    root.lastKeyCode = code
+    root.lastActionAt = now
+    root.lastAction = name
 
-    // Buttons and the keymap switch must not auto-fire: several of these keys
-    // are movement in another keymap, so they are bound as repeating.
-    if (code === root.keyTab) { if (!repeat) { root.pokeIdle(); root.cycleKeymap() } return }
-    if (code === m.lmb) { if (!repeat) { root.pokeIdle(); root.clickNow(1) } return }
-    if (code === m.mmb) { if (!repeat) { root.pokeIdle(); root.clickNow(3) } return }
-    if (code === m.rmb) { if (!repeat) { root.pokeIdle(); root.clickNow(2) } return }
+    // These must not auto-fire, and several of their keys repeat.
+    if (name === "cycle") { if (!repeat) { root.pokeIdle(); root.cycleKeymap() } return }
+    if (name === "lmb") { if (!repeat) { root.pokeIdle(); root.clickNow(1) } return }
+    if (name === "mmb") { if (!repeat) { root.pokeIdle(); root.clickNow(3) } return }
+    if (name === "rmb") { if (!repeat) { root.pokeIdle(); root.clickNow(2) } return }
 
-    // Scroll cannot ride key repeat: injecting a wheel event through ydotool
-    // cancels Hyprland's repeat for the key being held (measured: 40 repeats
-    // become 8). So the held state is polled from the compositor instead.
-    if (code === m.su || code === m.sd) {
+    if (name === "scrollup" || name === "scrolldown") {
       root.pokeIdle()
-      root.scrollSign = (code === m.su) ? 1 : -1
-      if (repeat) return                    // a repeat may still slip in; polling owns this
+      root.scrollSign = (name === "scrollup") ? 1 : -1
+      if (repeat) return
+      root.stopScroll()
       if (fastTap) {
-        // Enough detents in one event to carry any ordinary view to its end.
-        scrollPoll.stop()
-        root.holdConfirmed = false
-        motionTimer.stop()
         root.scroll(root.scrollSign * root.scrollEndDetents)
         return
       }
-      root.scrollSym = root.keySyms[code] || ""
-      root.beginHold("scroll", code, now)
       root.scroll(root.scrollSign)          // the one-detent floor
-      if (root.scrollSym) scrollPoll.restart()
+      scrollArm.restart()                   // becomes auto-scroll if still held
       return
     }
 
-    var d = root.dirFor(code)
+    var d = root.actionDirs[name]
     if (!d) return
     root.pokeIdle()
     root.moveDir = d
     root.collectEdges()                 // cheap, and keeps up with moved windows
     if (repeat) { root.confirmHold(now, root.repeatGapMs); return }
-
     if (root.holdConfirmed && root.activeKind === "move") {
-      root.startSweep(code, now, root.holdH)              // hand the speed over
+      root.startSweep(name, now, root.holdH)             // hand the speed over
     } else {
-      root.beginHold("move", code, now)
+      root.beginHold("move", name, now)
     }
     root.moveStep(d, root.baseStep, fastTap)
   }
+
+  // A scroll key's release cannot dispatch a global shortcut — `release = true`
+  // binds only fire with exec_cmd — so bindings.lua execs back into this over
+  // the shell's IPC. Measured at ~35ms, under one detent of overrun.
+  function scrollstop(arg) {
+    root.stopScroll()
+    return "ok"
+  }
+
+  function stopScroll() {
+    scrollArm.stop()
+    autoScroll.stop()
+    scrollCap.stop()
+  }
+
 
   // ---- input ----------------------------------------------------------------
   // One global shortcut per physical key, dispatched from binds in the submap.
   // Each carries the key's evdev code so everything downstream is unchanged
   // from when these arrived as key events. Keys that move or scroll in any
   // keymap also need a release, to stop the accel timer and start the glide.
-  readonly property var keyDefs: [
-    { n: "I", c: 23 }, { n: "J", c: 36 }, { n: "K", c: 37 }, { n: "L", c: 38 },
-    { n: "Y", c: 21 }, { n: "H", c: 35 },
-    { n: "W", c: 17 }, { n: "A", c: 30 }, { n: "S", c: 31 }, { n: "D", c: 32 },
-    { n: "R", c: 19 }, { n: "F", c: 33 },
-    { n: "UP", c: 103 }, { n: "DOWN", c: 108 }, { n: "LEFT", c: 105 }, { n: "RIGHT", c: 106 },
-    { n: "Prior", c: 104 }, { n: "Next", c: 109 },
-    { n: "C", c: 46 }, { n: "X", c: 45 }, { n: "Z", c: 44 },
-    { n: "comma", c: 51 }, { n: "period", c: 52 }, { n: "slash", c: 53 },
-    { n: "TAB", c: 15 }
-  ]
-
   Instantiator {
-    model: root.keyDefs
+    model: root.actions
     delegate: QtObject {
       required property var modelData
       readonly property var shortcut: GlobalShortcut {
         appid: "mousekeys"
-        name: "k" + modelData.n
-        description: "Mouse keys " + modelData.n
-        onPressed: root.handleKey(modelData.c)
+        name: modelData
+        description: "Mouse keys: " + modelData
+        onPressed: root.handleAction(modelData)
       }
     }
   }
@@ -623,31 +621,29 @@ Item {
     }
   }
 
+  // A tap is one detent; still held after scrollArmMs, it becomes auto-scroll.
   Timer {
-    id: scrollPoll
-    interval: root.scrollPollMs
+    id: scrollArm
+    interval: root.scrollArmMs
+    onTriggered: if (root.active) { autoScroll.start(); scrollCap.restart() }
+  }
+
+  Timer {
+    id: autoScroll
+    interval: Math.max(16, Math.round(1000 / root.scrollMaxRate))
     repeat: true
     onTriggered: {
-      if (!root.active || root.activeKind !== "scroll" || !root.scrollSym) { scrollPoll.stop(); return }
-      if (!scrollProbe.running) scrollProbe.running = true
+      if (!root.active) { root.stopScroll(); return }
+      root.pokeIdle()
+      root.scroll(root.scrollSign)
     }
   }
 
-  Process {
-    id: scrollProbe
-    command: ["hyprctl", "repl", "return tostring(hl.is_key_down(\"" + root.scrollSym + "\"))"]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        if (!root.active || root.activeKind !== "scroll") return
-        if (String(text).indexOf("true") >= 0) {
-          root.confirmHold(Date.now(), root.scrollGapMs)
-          if (!motionTimer.running) { root.lastTickAt = Date.now(); motionTimer.start() }
-        } else {
-          scrollPoll.stop()
-          root.holdConfirmed = false
-        }
-      }
-    }
+  // The release callback is the normal stop; this is in case it never arrives.
+  Timer {
+    id: scrollCap
+    interval: root.scrollMaxMs
+    onTriggered: root.stopScroll()
   }
 
 
@@ -668,16 +664,10 @@ Item {
       if (down) {
         root.holdH = Math.min(root.sweepMs / 1000, root.holdH + dt)
         root.pokeIdle()
-        if (root.activeKind === "move") {
-          root.moveStep(root.moveDir, root.speedFor(root.holdH) * dt, false)
-        } else if (root.activeKind === "scroll") {
-          root.scrollAcc += root.scrollRateFor(root.holdH) * dt
-          while (root.scrollAcc >= 1) { root.scroll(root.scrollSign); root.scrollAcc -= 1 }
-        }
+        root.moveStep(root.moveDir, root.speedFor(root.holdH) * dt, false)
       } else {
         root.holdConfirmed = false
         root.holdH = Math.max(0, root.holdH - dt)
-        root.scrollAcc = 0
         if (root.holdH <= 0) motionTimer.stop()
       }
     }
@@ -708,9 +698,7 @@ Item {
 
   Process {
     id: chordProbe
-    command: ["hyprctl", "repl",
-      "return tostring((((hl.is_key_down(\"m\") or hl.is_key_down(\"M\")))"
-      + " and (hl.is_key_down(\"Super_L\") or hl.is_key_down(\"Super_R\"))) or false)"]
+    command: ["hyprctl", "repl", root.chordExpr]
     stdout: StdioCollector {
       // Still down: keep waiting for either the release or the latch timer.
       // Up: that was a short press, so start now with the idle deadline.
@@ -755,7 +743,7 @@ Item {
     WlrLayershell.layer: WlrLayer.Overlay
     // Never take keyboard focus: any focus mode either swallows the clicks we
     // inject (Exclusive) or stops delivering keys after the first one
-    // (OnDemand). Keys come from submap binds instead — see keyDefs below.
+    // (OnDemand). Keys arrive as action shortcuts from the submap binds.
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
     // Hyprland hides the real pointer on key press (cursor:hide_on_key_press),

@@ -34,7 +34,52 @@ is underneath, and `Shift`+click extends a selection. Measured: the client sees
 `scrollEndDetents` (120) notches in one event, which carries an ordinary view to
 its beginning or end.
 
-`Tab` cycles left → right → arrows. The active keymap is written to
+### Remapping any of it
+
+Every key above is configured in `bindings.lua`, not in the plugin. The binds
+name **actions**, never keys: the plugin registers one global shortcut per
+action — `up down left right lmb mmb rmb scrollup scrolldown cycle`, plus
+`toggle` for the chord — and each keymap is a submap that points keys at them.
+
+So changing a key is a one-line edit with no plugin change and no restart,
+just `hyprctl reload`:
+
+```lua
+mousekeys_map("left", {
+  up = "I", down = "K", left = "J", right = "L",
+  lmb = "C", mmb = "X", rmb = "Z", scrollup = "Y", scrolldown = "H",
+  -- cycle = "TAB",   -- optional; TAB is the default
+})
+```
+
+Adding a fourth keymap is one more `mousekeys_map(...)` call plus its name in
+the cycle order. The order lives in `shell.json`, which is where Omarchy keeps
+plugin settings — inline on the plugin's own entry:
+
+```json
+{ "id": "mousekeys", "keymaps": ["arrows", "left"] }
+```
+
+Omit it and you get `["left", "right", "arrows"]`. Names must match the
+`mousekeys_map` calls: the plugin dispatches `hl.dsp.submap("mousekeys-<name>")`
+and a name with no submap behind it leaves you in a session that ignores keys.
+The entry chord is an ordinary bind at the top of the block, so `SUPER + M` is
+changed the same way — with one extra step. The plugin has to poll whether the
+chord is still held (it is how a short press is told from a long one, see
+[How input actually gets here](#how-input-actually-gets-here-and-why)), so it
+needs the chord's **keysyms** as well as the bind:
+
+```json
+{ "id": "mousekeys", "chordKey": ["b"], "chordMods": ["Super_L", "Super_R"] }
+```
+
+Either list may hold several syms and any one counts — that is how `Super_L`
+and `Super_R`, and the shifted `M`, are both covered by the defaults
+(`["m", "M"]` and `["Super_L", "Super_R"]`). Set `chordMods` to `[]` for a bare
+key. Get these wrong and the bind still works, but every press latches: the poll
+never sees the chord go up.
+
+`Tab` cycles through that list. The active keymap is written to
 `$XDG_STATE_HOME/quickshell/by-shell/<id>/mousekeys.json` and restored on load;
 its name flashes under the cursor on entry and after each Tab.
 
@@ -214,9 +259,14 @@ of the dead zone described next.
   helper reading `/dev/input` directly.
 - **A wheel event cancels Hyprland's key repeat.** Injecting a scroll through
   ydotool kills the repeat of the key being held — measured, 40 repeats become 8.
-  So auto-scroll cannot ride repeats like movement does; instead the plugin polls
-  `hl.is_key_down(<keysym>)` every `scrollPollMs` (80ms) while a scroll key is
-  down. That is one short-lived subprocess per poll, and only while scrolling.
+  So auto-scroll cannot ride repeats like movement does — the plugin would have
+  no evidence the key is still down. Each scroll key therefore carries a second,
+  `release = true` bind that runs
+  `omarchy-shell -q shell call mousekeys scrollstop ''`. That is the one place
+  `exec_cmd` earns its keep: it is the only bind form that fires on release, and
+  it lands in ~35ms — inside a single detent, so scrolling stops where you let
+  go. Auto-scroll also self-caps at `scrollMaxMs` (8s) in case a release is ever
+  missed, and one subprocess per release beats one per 80ms poll.
 
 ## How input actually gets here, and why
 
@@ -240,12 +290,13 @@ shows the difference.
 
 Two consequences fall out of the bind route:
 
-- **Nothing here waits for a key release**, because none is available: a
-  `release = true` bind fires when it dispatches `exec_cmd` but never when it
-  dispatches `hl.dsp.global`. Movement and scroll ride Hyprland's own key
-  repeat instead (250ms delay, then 40/s — close enough to the 150ms/50Hz ramp
-  this used to run on its own timer), and a key is taken to be up once repeats
-  stop for `repeatGapMs`.
+- **Movement never waits for a key release**, because none is available to it:
+  a `release = true` bind fires when it dispatches `exec_cmd` but never when it
+  dispatches `hl.dsp.global`. Movement rides Hyprland's own key repeat instead
+  (250ms delay, then 40/s — close enough to the 150ms/50Hz ramp this used to
+  run on its own timer), and a key is taken to be up once repeats stop for
+  `repeatGapMs`. Scroll keys are the exception and take the `exec_cmd` route
+  deliberately; see below.
 - **Buttons and Tab ignore repeats.** Several of those keys are movement in
   another keymap, so they are bound as repeating; firing on a repeat would turn
   a held key into a click storm.
@@ -337,4 +388,4 @@ bracketleft bracketright grave backslash`, and `DELETE END INSERT F1`–`F12`.
 `SUPER + Caps_Lock` also works, but **only bound by keycode as `code:66`**:
 Omarchy sets `kb_options = "compose:caps"`, so the physical key emits
 `Multi_key`, not `Caps_Lock`. A keysym bind registers and silently never fires,
-and the release poll would have to query `"Multi_key"`.
+and a `release = true` bind on it would have to name `Multi_key` too.

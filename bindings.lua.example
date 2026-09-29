@@ -23,7 +23,7 @@ hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
 --                fast_tap_ms; they start out equal only by coincidence.
 MOUSEKEYS = {
   fast_tap_ms = 135,
-  carry_ms = 135,
+  carry_ms = 150,
 }
 
 -- Each keymap is a submap. The binds name ACTIONS, not keys, so remapping is a

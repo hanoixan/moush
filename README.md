@@ -68,7 +68,7 @@ means `hyprctl reload` is enough to apply a change, with no shell restart:
 ```lua
 MOUSEKEYS = {
   fast_tap_ms = 135,   -- re-press the same key quicker than this to double-tap
-  carry_ms    = 135,   -- press a direction this soon after another to keep its speed
+  carry_ms    = 150,   -- press a direction this soon after another to keep its speed
 }
 ```
 
@@ -128,7 +128,7 @@ restart it. This needs an explicit bridge: the key that will sustain the sweep
 does not repeat for 250ms, so without one the motion would lapse after
 `repeatGapMs` and the speed would bleed away while waiting.
 
-**The handover survives letting go**, for `carry_ms` (135ms). Requiring the old key
+**The handover survives letting go**, for `carry_ms` (150ms). Requiring the old key
 to still be down meant releasing it a moment early threw the speed away: the new
 key took one `baseStep` and then nothing moved until its first auto-repeat landed
 250ms later. The window is measured from the last key *event* proving a direction
@@ -139,10 +139,15 @@ release, since `h` decays across the gap.
 
 ```
 hold Right 1.0s (h≈0.93, ~1275px/s), release, wait, then one press of Down:
-  gap seen by the plugin     6   47   84  117 | 146  177  205 ms
-  carried                  yes  yes  yes  yes |  no   no   no
-  travel from that press   458  480  461  453 |   8    8    8 px
+  gap seen by the plugin     8   50   86  122  148 | 176  219 ms
+  carried                  yes  yes  yes  yes  yes |  no   no
+  travel from that press       107..462px          |    8px
 ```
+
+The gap is the one the plugin measured, not the one asked for: harness timing could
+not set it reliably, so `probe()` reports what each press actually saw. Travel
+varies across the carried cases because the cursor clamps at a screen edge part way
+through some of them; the decision is the thing being measured.
 
 Both modes wait out the acceleration ramp identically; Shift changes *where the
 cursor lands*, not how fast it gets going.

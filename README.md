@@ -128,6 +128,18 @@ x is halved because the rows are staggered by half a key. That makes a column
 step and a row step the same distance, so `7`→`0` and `7`→`N` both measure 3,
 as they do under your fingers.
 
+**Presses are grouped into clusters, and a fit never spans two.** A gap longer
+than `mashClusterMs` (100ms) ends the gesture, and the next press starts a fresh
+cluster with nothing carried over. Without that, two sweeps either side of a pause
+were fitted together and produced a direction belonging to neither. The cluster
+*is* the window every strategy reads — there is no separate sliding window any
+more.
+
+```
+presses 52ms apart   -> cluster = 4     one gesture
+presses 140ms apart  -> cluster = 1     each press starts its own
+```
+
 **Which strategy turns presses into a direction is configurable**, because there
 is no obviously right answer and they are easy to compare. All five read the same
 press trail and return one velocity in key-widths per second:
@@ -167,8 +179,8 @@ perpendicular, and the ball never moves. Multiplying rejects it: any direction
 with no motion along it scores zero.
 
 The subvector's length is the mean of those two projected velocities — the speed
-along the fitted axis, ignoring sideways scatter. Subvectors from the last
-`mashWindowMs` (400ms) are averaged, weighted by length, into one drive vector,
+along the fitted axis, ignoring sideways scatter. The subvectors of the current
+cluster are averaged, weighted by length, into one drive vector,
 so longer hops count for more and a mash that reverses cancels itself out.
 
 **The ball.** Each press adds an impulse along the drive direction and friction
@@ -213,7 +225,7 @@ by default and **backtick** toggles it.
 
   7  8  9  0  -                          the grid as it sits under your hand;
  Y  U  I  O  P  [                        a key brightens when struck
- H  J  K  L  ;  '                        and fades back over 3s
+ H  J  K  L  ;  '                        struck anywhere in this cluster
   N  M  ,  .  /
 
         \|/                              vectors, drawn from the grid centre
@@ -228,8 +240,13 @@ each sits on the stretch of the gesture it describes and the chain of them trace
 the path the hand took. They are drawn at half opacity: there is one per press,
 and they are working detail rather than the answer, so they should not crowd out
 the drive vector. Only the aggregates — the drive vector and the strategies —
-radiate from the grid centre, since those are directions rather than places. Hits and vectors fade over
-`dbgFadeMs` (3s), so the trace of a gesture stays readable just after it ends.
+radiate from the grid centre, since those are directions rather than places.
+
+**The graphic holds one cluster and does not fade.** It shows the most recent
+cluster and keeps showing it, so a gesture can be studied after it has finished
+rather than disappearing while you look at it; the next cluster clears the panel
+and draws itself instead. The log below is the exception — it spans clusters, and
+the gap that ended one shows up there as a large delta. 
 
 **Every strategy in `mash_debug_strategies` is drawn too**, whether or not it is
 the one steering, so they can be read against each other live. A colour key along

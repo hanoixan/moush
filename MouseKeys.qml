@@ -70,7 +70,7 @@ Item {
   readonly property int holdChainMs: 400      // same key again within this => same hold, keep its clock
   readonly property int takeoverGraceMs: 320  // bridges a new key's repeat delay so motion never lapses
   // ---- mash ------------------------------------------------------------------
-  readonly property int mashWindowMs: 400     // subvectors newer than this steer the ball
+  readonly property int mashEwmaTauMs: 400    // ewma's decay constant; the rest use the cluster
   readonly property real mashFriction: 3.0    // e-folds per second of rolling decay
   readonly property real mashGain: 0.53       // impulse per (key-width/s)^mashExp
   readonly property real mashStepPx: 1        // every press moves at least this far
@@ -79,10 +79,12 @@ Item {
   // comes out as ~1e-15 rather than 0, which would pass a bare "> 0" and be taken
   // as a valid contribution that happens to move nothing.
   readonly property real mashMinSpeed: 0.05   // key-widths/s below this is degenerate
-  readonly property int mashTrailMs: 1200     // presses kept for the strategies to read
+  // A gap longer than this ends the gesture: the next press starts a fresh
+  // cluster, and a fit is only ever made from presses within one. Mixing two
+  // sweeps separated by a pause produced a direction belonging to neither.
+  readonly property int mashClusterMs: 100
   readonly property int mashTrailMax: 16
   readonly property var mashStrategies: ["cpa", "lsq", "net", "pca", "ewma"]
-  readonly property int dbgFadeMs: 3000       // hits and vectors fade away over this
   readonly property real dbgPitch: 26         // px between grid cells
   readonly property real dbgScale: 4          // px drawn per key-width/second
   readonly property real dbgMaxLen: 92        // ...but never longer than this
@@ -239,7 +241,7 @@ Item {
   property var dbgStrats: ({})                // name -> {x, y, t}, newest result each
   property var dbgLog: []                     // {g, dt, grid} newest first, for the log
   property real dbgLogAt: 0                   // previous logged event, for the delta
-  property var mashTrail: []                  // recent key-downs: {x, y, t}
+  property var mashTrail: []                  // the current cluster's key-downs
   property var mashSubs: []                   // recent subvectors: {x, y, t}
   property real ballVX: 0
   property real ballVY: 0
@@ -290,6 +292,7 @@ Item {
       + " keysDown=" + (root.keysDown === "" ? "none" : root.keysDown.replace(/ /g, ","))
       + " ball=" + root.ballVX.toFixed(0) + "," + root.ballVY.toFixed(0)
       + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
+      + " cluster=" + root.mashTrail.length
       + " strategy=" + root.mashStrategy
       + " shown=[" + root.mashDebugStrategies.join(",") + "]"
       + " dbg=" + root.mashDebug + " labels=" + Object.keys(root.mashLabels).length
@@ -845,22 +848,6 @@ Item {
     return ({ x: ux * v, y: uy * v, ox: p1.x, oy: p1.y, t: p3.t, ok: true })
   }
 
-  function dbgPruneMs(list, now, ms) {
-    var keep = []
-    for (var i = 0; i < list.length; i++)
-      if (now - list[i].t <= ms) keep.push(list[i])
-    return keep
-  }
-
-  function dbgPrune(list, now) { return root.dbgPruneMs(list, now, root.dbgFadeMs) }
-
-  // 1 right after a press, 0 once it has faded out.
-  function dbgAlpha(t, now) {
-    if (!(t > 0)) return 0
-    var a = 1 - (now - t) / root.dbgFadeMs
-    return a < 0 ? 0 : (a > 1 ? 1 : a)
-  }
-
   function dbgRgba(r, g, b, a) {
     return "rgba(" + r + "," + g + "," + b + "," + a.toFixed(2) + ")"
   }
@@ -934,12 +921,10 @@ Item {
   // they are interchangeable: bindings.lua picks which one steers the pointer, and
   // any of them can be drawn in the debug view alongside it for comparison.
 
-  function mashWindow(now, ms) {
-    var out = []
-    for (var i = 0; i < root.mashTrail.length; i++)
-      if (now - root.mashTrail[i].t <= ms) out.push(root.mashTrail[i])
-    return out
-  }
+  // The cluster *is* the window: the trail holds exactly the current one, so a
+  // strategy asking for "recent presses" gets the gesture in progress and nothing
+  // from before the pause that ended the last one.
+  function mashWindow() { return root.mashTrail }
 
   // cpa — magnitude-weighted mean of the fitted subvectors. Longer hops count for
   // more and a mash that reverses cancels itself out.
@@ -947,7 +932,6 @@ Item {
     var sx = 0, sy = 0, n = 0
     for (var i = 0; i < root.mashSubs.length; i++) {
       var sv = root.mashSubs[i]
-      if (now - sv.t > root.mashWindowMs) continue
       sx += sv.x; sy += sv.y; n++
     }
     return n === 0 ? null : ({ x: sx / n, y: sy / n })
@@ -957,7 +941,7 @@ Item {
   // direction and speed come out together, and one stray key barely moves it.
   // The steadiest of these without being blind to the middle of the gesture.
   function mashLsq(now) {
-    var w = root.mashWindow(now, root.mashWindowMs)
+    var w = root.mashWindow()
     if (w.length < 3) return null
     var tb = 0, xb = 0, yb = 0, i
     for (i = 0; i < w.length; i++) { tb += w[i].t; xb += w[i].x; yb += w[i].y }
@@ -974,7 +958,7 @@ Item {
   // net — where the hand got to, over how long it took. Blind to the path in
   // between, which makes it the calmest and the slowest to notice a turn.
   function mashNet(now) {
-    var w = root.mashWindow(now, root.mashWindowMs)
+    var w = root.mashWindow()
     if (w.length < 2) return null
     var a = w[0], b = w[w.length - 1]
     var dt = (b.t - a.t) / 1000
@@ -986,7 +970,7 @@ Item {
   // *along* it. Alone among these it survives mashing back and forth on one line:
   // the others average that to nothing, this reads it as motion on that axis.
   function mashPca(now) {
-    var w = root.mashWindow(now, root.mashWindowMs)
+    var w = root.mashWindow()
     if (w.length < 3) return null
     var xb = 0, yb = 0, i
     for (i = 0; i < w.length; i++) { xb += w[i].x; yb += w[i].y }
@@ -1012,13 +996,13 @@ Item {
   // ewma — every hop's own velocity, weighted so the newest dominate. No hard
   // window edge, so it turns fastest, at the cost of being the twitchiest.
   function mashEwma(now) {
-    var w = root.mashWindow(now, root.mashTrailMs)
+    var w = root.mashWindow()
     if (w.length < 2) return null
     var sx = 0, sy = 0, sw = 0
     for (var i = 1; i < w.length; i++) {
       var dt = (w[i].t - w[i - 1].t) / 1000
       if (!(dt > 0)) continue
-      var wt = Math.exp(-(now - w[i].t) / root.mashWindowMs)
+      var wt = Math.exp(-(now - w[i].t) / root.mashEwmaTauMs)
       sx += wt * (w[i].x - w[i - 1].x) / dt
       sy += wt * (w[i].y - w[i - 1].y) / dt
       sw += wt
@@ -1039,10 +1023,13 @@ Item {
     var pos = root.mashPos(name)
     if (!pos) return
     root.pokeIdle()
-    // Picking up again after a long pause is a new gesture, not a continuation of
-    // wherever the fingers were last time.
-    if (now - root.mashLastAt > root.mashWindowMs * 3) {
-      root.mashTrail = []; root.mashSubs = []; root.dbgStrats = ({})
+    // A gap ends the gesture. Everything the old cluster left behind goes with it,
+    // including what the overlay is drawing: the graphic shows one cluster at a
+    // time, so the new one replaces the old rather than accumulating over it.
+    if (now - root.mashLastAt > root.mashClusterMs) {
+      root.mashTrail = []; root.mashSubs = []
+      root.dbgStrats = ({}); root.dbgHits = []; root.dbgVecs = []
+      root.dbgDriveAt = 0; root.dbgDriveX = 0; root.dbgDriveY = 0
     }
     root.mashCount += 1
     root.mashLog = (root.mashLog + " " + name).slice(-70)
@@ -1050,17 +1037,15 @@ Item {
     root.mashLastAt = now
     // One trail, long enough for the widest window any strategy asks for; each
     // reads whatever slice of it it wants.
-    var hist = root.dbgPruneMs(root.mashTrail, now, root.mashTrailMs)
-                   .concat([{ x: pos.x, y: pos.y, t: now }])
+    var hist = root.mashTrail.concat([{ x: pos.x, y: pos.y, t: now }])
     if (hist.length > root.mashTrailMax) hist = hist.slice(hist.length - root.mashTrailMax)
     root.mashTrail = hist
-    root.dbgHits = root.dbgPrune(root.dbgHits, now).concat([{ name: name, t: now }])
+    root.dbgHits = root.dbgHits.concat([{ name: name, t: now }])
     root.dbgLastAt = now
-    root.mashSubs = root.dbgPruneMs(root.mashSubs, now, root.mashWindowMs)
     if (hist.length >= 3) {
       var sv = root.mashSubvector(hist[hist.length - 3], hist[hist.length - 2],
                                   hist[hist.length - 1])
-      root.dbgVecs = root.dbgPrune(root.dbgVecs, now).concat([sv])
+      root.dbgVecs = root.dbgVecs.concat([sv])
       if (sv.ok) root.mashSubs = root.mashSubs.concat([sv])
     }
     // Every strategy on the debug list is computed whether or not it is steering,
@@ -1420,9 +1405,10 @@ Item {
     repeat: true
     onTriggered: {
       dbgCanvas.requestPaint()
-      // One pass after the last thing has faded leaves the grid drawn dim, and
-      // then there is nothing left to animate.
-      if (Date.now() - root.dbgLastAt > root.dbgFadeMs + 100) dbgTimer.stop()
+      // Nothing animates any more: a few passes cover the strategy results landing
+      // after the press that triggered them, and then there is nothing to redraw
+      // until the next press.
+      if (Date.now() - root.dbgLastAt > 300) dbgTimer.stop()
     }
   }
 
@@ -1702,8 +1688,9 @@ Item {
     // What mash is thinking: the grid as it sits under your hand, which keys were
     // just struck, and the vectors being fitted from them. Yellow subvectors steer
     // the ball, red ones were rejected and contribute nothing, green is the drive
-    // vector they average to. Everything fades over dbgFadeMs so the trace of a
-    // gesture stays readable for a moment after it ends.
+    // vector they average to. It holds the most recent cluster and keeps holding
+    // it — nothing fades — so a gesture can be studied once it is over; the next
+    // cluster clears the panel and draws itself instead.
     Canvas {
       id: dbgCanvas
       visible: root.active && root.keymap === "mash" && root.mashDebug
@@ -1750,20 +1737,24 @@ Item {
           ctx.beginPath(); ctx.arc(ex, ey, 3, 0, 2 * Math.PI); ctx.fill()
         }
 
+        // Nothing here fades. The panel holds the most recent cluster and keeps
+        // holding it, so a gesture can be studied after it has finished; the next
+        // cluster clears it and draws itself instead.
+        //
         // Subvectors start at the first key of the triple they were measured from,
         // so each one sits on the stretch of the gesture it describes. Held at half
         // opacity: there is one per press and they are working detail, not the
         // answer, so they should not crowd out the drive vector.
         for (var i = 0; i < root.dbgVecs.length; i++) {
           var sv = root.dbgVecs[i]
-          var a = root.dbgAlpha(sv.t, now) * 0.5
+          var a = 0.5
           var mag = Math.sqrt(sv.x * sv.x + sv.y * sv.y)
           arrow(pad + sv.ox * pitch, pad + sv.oy * pitch, sv.x, sv.y,
                 sv.ok ? root.dbgRgba(255, 214, 0, a) : root.dbgRgba(255, 72, 72, a),
                 a, sv.ok ? mag * root.dbgScale : root.dbgDeadLen)
         }
         var dm = Math.sqrt(root.dbgDriveX * root.dbgDriveX + root.dbgDriveY * root.dbgDriveY)
-        var da = root.dbgAlpha(root.dbgDriveAt, now)
+        var da = root.dbgDriveAt > 0 ? 1 : 0
         arrow(ox, oy, root.dbgDriveX, root.dbgDriveY, root.dbgRgba(64, 255, 128, da),
               da, dm * root.dbgScale)
 
@@ -1776,7 +1767,7 @@ Item {
           var sn = root.mashDebugStrategies[si]
           var rec = root.dbgStrats[sn]
           if (!rec) continue
-          var ra = root.dbgAlpha(rec.t, now)
+          var ra = 1
           var rm = Math.sqrt(rec.x * rec.x + rec.y * rec.y)
           if (ra <= 0 || !(rm > 0)) continue
           ctx.setLineDash(root.dbgStratDash(sn))
@@ -1793,7 +1784,7 @@ Item {
         var fx = 8
         for (si = 0; si < root.mashDebugStrategies.length; si++) {
           var fn = root.mashDebugStrategies[si]
-          var live = root.dbgStrats[fn] ? root.dbgAlpha(root.dbgStrats[fn].t, now) : 0
+          var live = root.dbgStrats[fn] ? 1 : 0
           var fa = 0.45 + 0.55 * live
           ctx.strokeStyle = root.dbgStratColor(fn, fa)
           ctx.lineWidth = 2
@@ -1838,10 +1829,10 @@ Item {
           for (var c = 0; c < root.mashCols[y].length; c++) {
             var x2 = root.mashCols[y][c]
             var nm = "m" + x2 + "_" + y
-            var hit = 0
+            // Struck anywhere in this cluster, so lit; the log carries the order.
+            var ha = 0
             for (var h = 0; h < root.dbgHits.length; h++)
-              if (root.dbgHits[h].name === nm && root.dbgHits[h].t > hit) hit = root.dbgHits[h].t
-            var ha = root.dbgAlpha(hit, now)
+              if (root.dbgHits[h].name === nm) { ha = 1; break }
             var px = pad + (x2 / 2) * pitch, py = pad + y * pitch
             ctx.fillStyle = root.dbgRgba(255, 255, 255, 0.20 + 0.75 * ha)
             ctx.beginPath(); ctx.arc(px, py, 9, 0, 2 * Math.PI); ctx.fill()

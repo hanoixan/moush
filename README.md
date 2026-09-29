@@ -348,15 +348,26 @@ else on the panel it does not fade — entries stay until pushed out — because
 job is to be read after the fact.
 
 ```
-key  dt ms
-L    167     slower, deliberate presses
-K    144
-J    306     a pause
-·    201     a stray null key: inert, but logged so the gap is explained
-O     54     a fast run
-I     47
-U     75
-Y     -      first press, nothing to measure against
+key  dt ms  imp px/s
+P    146    529        laboured, so barely a shove
+O    105    1800
+I     20    37500      mashed hard: far past the 8000 px/s cap
+U     20    37500
+Y     -     -          first press: nothing to measure, nothing to fit
+```
+
+The third column is the impulse that press applied, `mash_gain * speed³`. Reading
+it against the `dt` beside it is the quickest way to see why a burst threw the
+cursor as far as it did — and to spot the cubic saturating: past about 25
+key-widths/second a single press already exceeds `mashVMax`, so mashing harder
+stops adding anything. A dash means the press drove nothing, either because the
+strategy had too few events yet or because its fit came back degenerate.
+
+A stray null key is logged too, so a gap in the deltas is explained rather than
+mysterious:
+
+```
+·    201     inert, but it happened
 ```
 
 Strays are logged in orange rather than skipped. A null key does nothing to the

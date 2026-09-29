@@ -921,9 +921,20 @@ Item {
   function dbgLogEvent(glyph, now, grid) {
     var dt = root.dbgLogAt > 0 ? Math.round(now - root.dbgLogAt) : -1
     root.dbgLogAt = now
-    root.dbgLog = [{ g: glyph, dt: dt, grid: grid }].concat(root.dbgLog)
+    root.dbgLog = [{ g: glyph, dt: dt, grid: grid, imp: 0 }].concat(root.dbgLog)
                     .slice(0, root.dbgLogMax)
     if (root.mashDebug) dbgTimer.start()
+  }
+
+  // The impulse is only known once the strategy has run, which is after the press
+  // is logged, so it is filled in afterwards rather than passed in. A row that
+  // keeps its zero is a press that drove nothing: too early in the cluster for the
+  // strategy to fit, or a fit that came back degenerate.
+  function dbgLogImpulse(v) {
+    if (root.dbgLog.length === 0) return
+    var out = root.dbgLog.slice()
+    out[0] = { g: out[0].g, dt: out[0].dt, grid: out[0].grid, imp: v }
+    root.dbgLog = out
   }
 
   function dbgGlyph(k) {
@@ -1129,6 +1140,7 @@ Item {
     // throw the cursor across the whole screen.
     if (!(s > 0)) return                    // the step above was the whole move
     var imp = root.mashGain * Math.pow(s, root.mashExp)
+    root.dbgLogImpulse(imp)
     root.ballVX += ux * imp
     root.ballVY += uy * imp
     var sp = Math.sqrt(root.ballVX * root.ballVX + root.ballVY * root.ballVY)
@@ -1867,6 +1879,7 @@ Item {
         ctx.fillStyle = root.dbgRgba(255, 255, 255, 0.45)
         ctx.fillText("key", 10, ly0)
         ctx.fillText("dt ms", 44, ly0)
+        ctx.fillText("imp px/s", 92, ly0)
         for (var li = 0; li < root.dbgLog.length; li++) {
           var e = root.dbgLog[li]
           var ey2 = ly0 + (li + 1) * root.dbgLogLineH
@@ -1878,6 +1891,11 @@ Item {
           ctx.fillText(e.g, 10, ey2)
           ctx.fillStyle = root.dbgRgba(200, 200, 200, ea * 0.85)
           ctx.fillText(e.dt < 0 ? "-" : String(e.dt), 44, ey2)
+          // Impulse is cubic in mash rate, so reading it against the dt beside it
+          // is the quickest way to see why a burst threw the cursor as far as it did.
+          ctx.fillStyle = e.imp > 0 ? root.dbgRgba(120, 230, 255, ea)
+                                    : root.dbgRgba(140, 140, 140, ea * 0.7)
+          ctx.fillText(e.imp > 0 ? String(Math.round(e.imp)) : "-", 92, ey2)
         }
 
         // Keys last so they sit over the vector origin rather than under it.

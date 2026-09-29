@@ -103,6 +103,81 @@ The pointer's position is drawn as a **translucent red disk** (`markerSize`,
 28px) — Hyprland hides the real cursor on key press
 (`cursor:hide_on_key_press`), so without a marker there is nothing to aim with.
 
+### mash — a trackball made of keys
+
+`mash` is a fourth keymap with a different idea behind it. Instead of a key per
+direction, the keys form a grid under your right hand, and mashing across them
+rolls the pointer the way dragging a finger rolls a trackball.
+
+```
+ 7 8 9 0 -          a  right click       w (held)  the mash becomes a wheel
+Y U I O P [         s  middle click      tab       next keymap
+H J K L ; '         d  left click
+ N M , . /          5 6 R T F G V B      inert, to absorb a stray reach
+```
+
+Everything else passes through, so typing still works.
+
+**The grid is a binding, not code.** Each position is an action named
+`m<x2>_<y>` — row `y`, column `x2` in half-key steps — so `bindings.lua` says
+which physical key sits at which grid point, and the plugin only ever reads
+coordinates out of the action name. Re-measuring the grid for a differently
+staggered keyboard is an edit there and nothing else.
+
+x is halved because the rows are staggered by half a key. That makes a column
+step and a row step the same distance, so `7`→`0` and `7`→`N` both measure 3,
+as they do under your fingers.
+
+**Direction comes from a fit over the last three presses.** With
+`a = (p₂-p₁)/Δt₁` and `b = (p₃-p₂)/Δt₂`, pick the unit `u` maximising
+`(a·u)(b·u)`. For a given sum a product peaks when its terms are equal, so this
+asks for the direction along which the two velocities are as *equal* — and as
+*large* — as possible, in one term. It is the principal eigenvector of
+`(abᵀ+baᵀ)/2`: one `atan2`, no iteration.
+
+Asking only for equal velocities does not work, and the failure is quiet. A mash
+straight right that speeds up projects to 10 and 20 along x, but to **0 and 0**
+along y — perfectly equal, and motionless. Uniformity alone always picks the
+perpendicular, and the ball never moves. Multiplying rejects it: any direction
+with no motion along it scores zero.
+
+The subvector's length is the mean of those two projected velocities — the speed
+along the fitted axis, ignoring sideways scatter. Subvectors from the last
+`mashWindowMs` (400ms) are averaged, weighted by length, into one drive vector,
+so longer hops count for more and a mash that reverses cancels itself out.
+
+**The ball.** Each press adds an impulse along the drive direction and friction
+bleeds it away: `v += u·gain·speed^mashExp`, then `v *= e^(-friction·dt)`. Total
+distance from one impulse is `v/friction`, so friction sets how long a throw
+lasts without changing how far it goes — the gain decides that. The exponent is
+steep because the two ends of the scale are far apart: a press at two per second
+should nudge a single pixel, a four-press burst should cross the screen.
+
+```
+slow, ~2 presses/sec   +1px per press          (the mashStepPx floor)
+fast, 4 presses/180ms  0 -> 1535px, clamped    (~one screen width)
+vertical mash 7 Y H N  y 100 -> 863            (down, as struck)
+5 R F V                no movement at all      (inert)
+```
+
+Every press moves at least `mashStepPx` (1px), the way every press elsewhere
+moves at least `baseStep`. Slow mashing lives entirely in that floor: at two
+presses a second the impulse works out to about a tenth of a pixel, which would
+round away to nothing.
+
+**Holding `w`** turns the ball into a wheel: the larger component of its velocity
+picks the axis, so a mostly-vertical mash scrolls the page and a mostly-horizontal
+one scrolls sideways. The pointer holds still while it is down. `w` has no
+dependable release either — see below — so it is polled rather than waited on.
+
+Two things this needed that were not obvious. The press history has to outlive the
+ball: stopping the ball used to clear it, and since a slow mash's first impulses
+stop the ball almost immediately, that erased the very presses a fit needs, so no
+direction could ever be computed. And the two-press fallback, used before a fit
+exists, yields a *direction* only — its length is a distance in key widths, and
+feeding that to a formula expecting key widths per second throws the ball at an
+arbitrary speed.
+
 ### Speed model — hold duration sets speed
 
 Both movement and scrolling run off one model. `h` is how long the current

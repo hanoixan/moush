@@ -69,6 +69,16 @@ Item {
   readonly property int scrollMaxMs: 8000     // safety cap if the release callback never lands
   readonly property int holdChainMs: 400      // same key again within this => same hold, keep its clock
   readonly property int takeoverGraceMs: 320  // bridges a new key's repeat delay so motion never lapses
+  // ---- mash ------------------------------------------------------------------
+  readonly property int mashWindowMs: 400     // subvectors newer than this steer the ball
+  readonly property real mashFriction: 3.0    // e-folds per second of rolling decay
+  readonly property real mashGain: 0.53       // impulse per (key-width/s)^mashExp
+  readonly property real mashStepPx: 1        // every press moves at least this far
+  readonly property real mashExp: 3.0         // maps mash rate to impulse, see README
+  readonly property real mashVMax: 8000       // px/s ceiling so a long mash cannot run away
+  readonly property real mashScrollPx: 90     // px of ball travel per wheel detent
+  readonly property int wheelPollMs: 70       // w gives no reliable release; ask instead
+
   readonly property int keysArmMs: 25         // ask the compositor this long before a hold would lapse
   readonly property int keysPollMs: 60        // ...and keep asking this often while it says held
   readonly property int keysGraceMs: 60       // each "still down" answer is good for this long
@@ -83,9 +93,25 @@ Item {
   // Keys live in bindings.lua, not here. Each keymap is a Hyprland submap whose
   // binds point at these action names, so remapping a key is a one-line edit in
   // that file and needs no change to this plugin.
+  // Mash grid positions are actions too, named by coordinate: "m<x2>_<y>", where
+  // x2 is the half-key column so the staggered rows land on whole numbers. That
+  // puts the entire spatial layout in bindings.lua — which physical key sits at
+  // which grid position is a binding, like everything else here.
+  readonly property var mashCols: [[1, 3, 5, 7, 9],            // 7 8 9 0 -
+                                   [0, 2, 4, 6, 8, 10],        // Y U I O P [
+                                   [0, 2, 4, 6, 8, 10],        // H J K L ; '
+                                   [1, 3, 5, 7, 9]]            // N M , . /
+  readonly property var mashActions: {
+    var out = []
+    for (var y = 0; y < root.mashCols.length; y++)
+      for (var i = 0; i < root.mashCols[y].length; i++)
+        out.push("m" + root.mashCols[y][i] + "_" + y)
+    return out
+  }
   readonly property var actions: ["up", "down", "left", "right",
                                   "lmb", "mmb", "rmb",
-                                  "scrollup", "scrolldown", "cycle"]
+                                  "scrollup", "scrolldown", "cycle",
+                                  "noop", "wheel"].concat(root.mashActions)
   readonly property var actionDirs: ({ "up": [0, -1], "down": [0, 1],
                                        "left": [-1, 0], "right": [1, 0] })
 
@@ -126,7 +152,7 @@ Item {
   }
 
   readonly property var keymapNames: (root.settings.keymaps && root.settings.keymaps.length > 0)
-    ? root.settings.keymaps : ["left", "right", "arrows"]
+    ? root.settings.keymaps : ["left", "right", "arrows", "mash"]
 
   property string keymap: "arrows"
   readonly property string statePath: Quickshell.statePath("mousekeys.json")
@@ -185,6 +211,18 @@ Item {
   property real downUntil: 0                  // held as long as now() < this
   property real lastDownAt: 0                 // last move-key event: press or repeat
   property string keysDown: ""                // diagnostic: last answer from keysProbe
+  // Always reassigned, never mutated in place: an in-place push on a `var`
+  // property does not reliably survive, which quietly left the subvector list
+  // empty while the presses themselves were arriving perfectly well.
+  property var mashHist: []                   // recent key-downs: {x, y, t}
+  property var mashSubs: []                   // recent subvectors: {x, y, t}
+  property real ballVX: 0
+  property real ballVY: 0
+  property bool wheelHeld: false
+  property real scrollAcc: 0
+  property real mashLastAt: 0
+  property int mashCount: 0                   // diagnostic: presses mashPress() saw
+  property string mashLog: ""                 // diagnostic: recent grid actions
   // Diagnostics for the carry decision: the gap the last fresh move press saw,
   // and whether it kept the speed. Reported by probe(); nothing depends on them.
   property real carryGap: -1
@@ -217,6 +255,10 @@ Item {
       + " holdH=" + root.holdH.toFixed(2) + " v=" + root.speedFor(root.holdH).toFixed(0)
       + " carryGap=" + Math.round(root.carryGap) + " carried=" + root.carried
       + " keysDown=" + (root.keysDown === "" ? "none" : root.keysDown.replace(/ /g, ","))
+      + " ball=" + root.ballVX.toFixed(0) + "," + root.ballVY.toFixed(0)
+      + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
+      + " mashN=" + root.mashCount + " histN=" + root.mashHist.length
+      + " mashLog=[" + root.mashLog.trim() + "]"
   }
 
   // Hyprland 0.56 parses dispatch arguments as Lua, and Quickshell already
@@ -247,7 +289,10 @@ Item {
     root.lastHoldAction = ""
     root.lastDownAt = 0
     root.keysDown = ""
+    root.wheelHeld = false
     keysPoll.stop()
+    wheelPoll.stop()
+    root.mashStop()
     root.prevGap = Infinity
     root.lastActionAt = 0
     root.holdH = 0
@@ -339,6 +384,11 @@ Item {
     var code = button === 1 ? "0xC0" : button === 2 ? "0xC1" : "0xC2"
     Quickshell.execDetached(["ydotool", "click", code])
     root.log("click " + button)
+  }
+
+  function scrollX(detents) {
+    if (detents === 0) return
+    Quickshell.execDetached(["ydotool", "mousemove", "-w", "-x", String(detents), "-y", "0"])
   }
 
   // ydotool's wheel axis: +1 is one detent up, -1 one down.
@@ -700,6 +750,136 @@ Item {
     cursorProc.running = true
   }
 
+  // ---- mash: a trackball driven by mashing a key grid ------------------------
+  // Each key is a point in space, so the order they are struck traces a path. The
+  // direction of that path drives a rolling ball; the rate you strike them sets
+  // how hard it is pushed.
+
+  function mashPos(name) {
+    var m = /^m(\d+)_(\d+)$/.exec(name)
+    if (!m) return null
+    // x is halved because the rows are staggered by half a key: that makes one
+    // column step and one row step the same distance, so 7->0 and 7->N both
+    // measure 3, as they do on the actual keyboard.
+    return ({ x: parseInt(m[1], 10) / 2, y: parseInt(m[2], 10) })
+  }
+
+  // Direction through the last three presses, chosen so the two projected
+  // velocities are as equal — and as large — as possible. Maximising their
+  // product does both at once: for a given sum a product peaks when the terms are
+  // equal, and any direction with no motion along it scores zero. Minimising
+  // their difference alone would not do: a mash straight right that speeds up
+  // projects to 10 and 20 along x, but to 0 and 0 along y, so "most uniform"
+  // would always pick the perpendicular and the ball would never move.
+  //
+  // maximise (a.u)(b.u) = u' M u for M = (ab' + ba')/2, so u is M's principal
+  // eigenvector — in 2D that is one atan2, no iteration.
+  function mashSubvector(p1, p2, p3) {
+    var dt1 = (p2.t - p1.t) / 1000, dt2 = (p3.t - p2.t) / 1000
+    if (!(dt1 > 0) || !(dt2 > 0)) return null
+    var ax = (p2.x - p1.x) / dt1, ay = (p2.y - p1.y) / dt1
+    var bx = (p3.x - p2.x) / dt2, by = (p3.y - p2.y) / dt2
+    var m11 = ax * bx, m22 = ay * by, m12 = (ax * by + ay * bx) / 2
+    var th = 0.5 * Math.atan2(2 * m12, m11 - m22)
+    var ux = Math.cos(th), uy = Math.sin(th)
+    if ((ax + bx) * ux + (ay + by) * uy < 0) { ux = -ux; uy = -uy }   // orient it
+    // Speed along that axis: the average of the velocities between successive
+    // closest points of approach, which is what projecting onto u gives.
+    var v = ((ax * ux + ay * uy) + (bx * ux + by * uy)) / 2
+    if (!(v > 0)) return null
+    return ({ x: ux * v, y: uy * v, t: p3.t })
+  }
+
+  // Magnitude-weighted mean of the subvectors still inside the window: longer
+  // hops count for more, and a mash that reverses cancels itself out.
+  function mashDrive(now) {
+    var sx = 0, sy = 0, n = 0
+    var keep = []
+    for (var i = 0; i < root.mashSubs.length; i++) {
+      var sv = root.mashSubs[i]
+      if (now - sv.t > root.mashWindowMs) continue
+      keep.push(sv); sx += sv.x; sy += sv.y; n++
+    }
+    root.mashSubs = keep
+    if (n === 0) return null
+    return ({ x: sx / n, y: sy / n })
+  }
+
+  function mashPress(name, now) {
+    var pos = root.mashPos(name)
+    if (!pos) return
+    root.pokeIdle()
+    // Picking up again after a long pause is a new gesture, not a continuation of
+    // wherever the fingers were last time.
+    if (now - root.mashLastAt > root.mashWindowMs * 3) {
+      root.mashHist = []; root.mashSubs = []
+    }
+    root.mashCount += 1
+    root.mashLog = (root.mashLog + " " + name).slice(-70)
+    root.mashLastAt = now
+    var hist = root.mashHist.concat([{ x: pos.x, y: pos.y, t: now }])
+    if (hist.length > 3) hist = hist.slice(hist.length - 3)
+    root.mashHist = hist
+    if (hist.length === 3) {
+      var sv = root.mashSubvector(hist[0], hist[1], hist[2])
+      if (sv) root.mashSubs = root.mashSubs.concat([sv])
+    }
+    var drive = root.mashDrive(now)
+    var s = drive ? Math.sqrt(drive.x * drive.x + drive.y * drive.y) : 0
+    var ux = 0, uy = 0
+    if (s > 0) {
+      ux = drive.x / s; uy = drive.y / s
+    } else {
+      // Fewer than three presses, so there is no fitted speed yet — only the hop
+      // just made, which gives a direction but no velocity. It steers the
+      // single-pixel step below and contributes no impulse: its length is a
+      // distance in key widths, and feeding that to a formula expecting key
+      // widths per second would throw the ball at an arbitrary speed.
+      var n = hist.length
+      if (n < 2) return
+      var dx = hist[n - 1].x - hist[n - 2].x, dy = hist[n - 1].y - hist[n - 2].y
+      var m = Math.sqrt(dx * dx + dy * dy)
+      if (!(m > 0)) return
+      ux = dx / m; uy = dy / m
+    }
+    // Every press moves at least mashStepPx, the way every press in the other
+    // keymaps moves at least baseStep. Slow mashing lives entirely here: at a
+    // couple of presses a second the impulse below works out to a tenth of a
+    // pixel, which would round away to nothing, so the floor is what makes slow
+    // mashing advance the cursor pixel by pixel instead of not at all.
+    if (root.wheelHeld) root.scrollAcc += uy * root.mashStepPx
+    else root.warp(root.curX + ux * root.mashStepPx, root.curY + uy * root.mashStepPx)
+    // Impulse grows steeply with mash rate because the two ends of the scale are
+    // far apart: a slow press should nudge a single pixel, a fast burst should
+    // throw the cursor across the whole screen.
+    if (!(s > 0)) return                    // the step above was the whole move
+    var imp = root.mashGain * Math.pow(s, root.mashExp)
+    root.ballVX += ux * imp
+    root.ballVY += uy * imp
+    var sp = Math.sqrt(root.ballVX * root.ballVX + root.ballVY * root.ballVY)
+    if (sp > root.mashVMax) {
+      root.ballVX *= root.mashVMax / sp
+      root.ballVY *= root.mashVMax / sp
+    }
+    if (!ballTimer.running) { root.lastTickAt = now; ballTimer.start() }
+    if (root.wheelHeld && !wheelPoll.running) wheelPoll.start()
+  }
+
+  // The ball coming to rest is not the end of the gesture: the press history has
+  // to outlive it, or a slow mash — whose first impulses stop the ball almost at
+  // once — would keep erasing the very presses a subvector is fitted from, and no
+  // direction could ever be computed.
+  function ballStop() {
+    root.ballVX = 0; root.ballVY = 0
+    root.scrollAcc = 0
+    ballTimer.stop()
+  }
+
+  function mashStop() {
+    root.ballStop()
+    root.mashHist = []; root.mashSubs = []
+  }
+
   // ---- key routing ----------------------------------------------------------
   // The first repeat lands input:repeat_delay (250ms) after the press, far
   // outside the fast-cadence window that identifies later repeats, so it looks
@@ -793,6 +973,17 @@ Item {
     root.prevGap = gap
     root.lastActionAt = now
     root.lastAction = name
+
+    if (name === "noop") return          // a stray key in mash mode, deliberately inert
+    if (name === "wheel") {
+      // w has no dependable release either, so it is asked about rather than
+      // waited on. Holding it turns the ball into a wheel instead of a pointer.
+      if (!root.wheelHeld) { root.wheelHeld = true; root.scrollAcc = 0 }
+      root.pokeIdle()
+      if (!wheelPoll.running) wheelPoll.start()
+      return
+    }
+    if (root.mashPos(name)) { if (!repeat) root.mashPress(name, now); return }
 
     // These must not auto-fire, and several of their keys repeat.
     if (name === "cycle") { if (!repeat) { root.pokeIdle(); root.cycleKeymap() } return }
@@ -925,6 +1116,68 @@ Item {
             root.log("carryMs <- " + v + " (bindings.lua)")
           }
         }
+      }
+    }
+  }
+
+  // Rolling under friction. Distance from a single impulse is v/friction, so the
+  // friction constant sets how long a throw takes without changing how far it
+  // goes — the gain above decides that.
+  Timer {
+    id: ballTimer
+    interval: root.motionTickMs
+    repeat: true
+    onTriggered: {
+      if (!root.active) { ballTimer.stop(); return }
+      var now = Date.now()
+      var dt = Math.min(0.1, Math.max(0.001, (now - root.lastTickAt) / 1000))
+      root.lastTickAt = now
+      var decay = Math.exp(-root.mashFriction * dt)
+      root.ballVX *= decay
+      root.ballVY *= decay
+      var sp = Math.sqrt(root.ballVX * root.ballVX + root.ballVY * root.ballVY)
+      if (sp < 1) { root.ballStop(); return }
+      if (root.wheelHeld) {
+        // The larger component wins the axis, so a mostly-vertical mash scrolls
+        // the page and a mostly-horizontal one scrolls sideways.
+        var horiz = Math.abs(root.ballVX) > Math.abs(root.ballVY)
+        root.scrollAcc += (horiz ? root.ballVX : root.ballVY) * dt
+        var det = (root.scrollAcc / root.mashScrollPx) | 0
+        if (det !== 0) {
+          root.scrollAcc -= det * root.mashScrollPx
+          if (horiz) root.scrollX(det)
+          else root.scroll(-det)        // screen-down is wheel-down
+        }
+        return                          // wheel instead of pointer, not as well
+      }
+      root.pokeIdle()
+      root.warp(root.curX + root.ballVX * dt, root.curY + root.ballVY * dt)
+    }
+  }
+
+  Timer {
+    id: wheelPoll
+    interval: root.wheelPollMs
+    repeat: true
+    onTriggered: {
+      if (!root.active) { wheelPoll.stop(); root.wheelHeld = false; return }
+      if (!wheelProbe.running) wheelProbe.running = true
+    }
+  }
+
+  Process {
+    id: wheelProbe
+    command: ["hyprctl", "repl",
+      'local k = ((MOUSEKEYS or {}).keys or {})["mash"] or {} '
+      + 'local s = k.wheel if not s then return "false" end '
+      + 'for _, n in ipairs({ s, s:lower(), s:sub(1,1):upper() .. s:sub(2):lower() }) do '
+      + 'if hl.is_key_down(n) then return "true" end end return "false"']
+    stdout: StdioCollector {
+      onStreamFinished: {
+        if (String(text).indexOf("true") >= 0) return
+        root.wheelHeld = false
+        root.scrollAcc = 0
+        wheelPoll.stop()
       }
     }
   }

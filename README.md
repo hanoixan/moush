@@ -242,12 +242,11 @@ and they are working detail rather than the answer, so they should not crowd out
 the drive vector. Only the aggregates — the drive vector and the strategies —
 radiate from the grid centre, since those are directions rather than places.
 
-**Keys are shaded by their timing within the cluster.** While the gesture is still
-running a struck key is simply lit. Once it has gone quiet — nothing struck for
-`mashClusterMs` — each key is shaded from dark grey at the start of the cluster to
-bright green at the end, by `(t - t_first) / (t_last - t_first)`. The gesture's
-rhythm then reads straight off the grid: an even sweep shades evenly, and a burst
-that stalled leaves a visible cliff between two neighbouring keys.
+**Keys are shaded by their timing within the cluster**, from dark grey at the
+start of the gesture to bright green at the most recent press, by
+`(t - t_first) / (t_latest - t_first)`. The rhythm then reads straight off the
+grid: an even sweep shades evenly, and a burst that stalled leaves a visible cliff
+between two neighbouring keys.
 
 ```
 struck  Y     U     I     O     P
@@ -256,10 +255,13 @@ normal  0.00  0.07  0.13  0.51  1.00
         dark  .............green....  three quick, then two laboured
 ```
 
-It waits for the silence rather than for the next press: noticing at the next
-press would leave a gesture's shading unseen until the gesture after it. A key
-struck twice shades by its later strike, and a single-press cluster — which has no
-span to divide by — reads as the end of one.
+**The whole grid re-shades on every press**, because the span it normalises
+against grows with the cluster. The newest key is always at full green and the
+rest slide back toward grey behind it, so the picture is live from the first press
+rather than only resolving once the gesture is over.
+
+A key struck twice shades by its later strike. A cluster of one has no span to
+divide by, and its only key is also its most recent, so it reads as fully green.
 
 **The graphic holds one cluster and does not fade.** It shows the most recent
 cluster and keeps showing it, so a gesture can be studied after it has finished

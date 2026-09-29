@@ -37,6 +37,15 @@ MOUSEKEYS = {
 -- Hyprland's key repeat, so the plugin cannot see the key is still down; a
 -- `release = true` bind will not dispatch a global shortcut, so it calls back in.
 local function mousekeys_map(name, k)
+  -- Published so the plugin can ask which direction keys are physically down.
+  -- Hyprland cancels key repeat when any key is released and never hands it back
+  -- to a key still held, so repeats alone cannot tell that the other arrow is
+  -- still pressed, and a release bind does not fire once two bound keys are down.
+  -- The plugin evaluates hl.is_key_down against these, which is why the keys live
+  -- here and not there: is_key_down needs exact X keysyms and this is the only
+  -- place that knows what the keys are.
+  MOUSEKEYS.keys = MOUSEKEYS.keys or {}
+  MOUSEKEYS.keys[name] = k
   hl.define_submap("mousekeys-" .. name, function()
     hl.bind("CTRL + ALT + Escape", hl.dsp.submap("reset"))          -- emergency exit
     for action, key in pairs({ up = k.up, down = k.down, left = k.left, right = k.right }) do

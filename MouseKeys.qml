@@ -69,6 +69,9 @@ Item {
   readonly property int scrollMaxMs: 8000     // safety cap if the release callback never lands
   readonly property int holdChainMs: 400      // same key again within this => same hold, keep its clock
   readonly property int takeoverGraceMs: 320  // bridges a new key's repeat delay so motion never lapses
+  readonly property int keysArmMs: 25         // ask the compositor this long before a hold would lapse
+  readonly property int keysPollMs: 60        // ...and keep asking this often while it says held
+  readonly property int keysGraceMs: 60       // each "still down" answer is good for this long
   readonly property int idleMs: 2000          // short-press session idles out; 0 disables
   readonly property int chordLongPressMs: 500 // chord held this long latches instead
   readonly property int armPollMs: 70         // how often we check if the chord is still down
@@ -181,6 +184,7 @@ Item {
   property real holdPressAt: 0                // when the current press began
   property real downUntil: 0                  // held as long as now() < this
   property real lastDownAt: 0                 // last move-key event: press or repeat
+  property string keysDown: ""                // diagnostic: last answer from keysProbe
   // Diagnostics for the carry decision: the gap the last fresh move press saw,
   // and whether it kept the speed. Reported by probe(); nothing depends on them.
   property real carryGap: -1
@@ -212,6 +216,7 @@ Item {
       + " autoscroll=" + autoScroll.running
       + " holdH=" + root.holdH.toFixed(2) + " v=" + root.speedFor(root.holdH).toFixed(0)
       + " carryGap=" + Math.round(root.carryGap) + " carried=" + root.carried
+      + " keysDown=" + (root.keysDown === "" ? "none" : root.keysDown.replace(/ /g, ","))
   }
 
   // Hyprland 0.56 parses dispatch arguments as Lua, and Quickshell already
@@ -241,6 +246,8 @@ Item {
     root.lastAction = ""
     root.lastHoldAction = ""
     root.lastDownAt = 0
+    root.keysDown = ""
+    keysPoll.stop()
     root.prevGap = Infinity
     root.lastActionAt = 0
     root.holdH = 0
@@ -710,6 +717,55 @@ Item {
     motionTimer.start()
   }
 
+  // Repeats are not proof of release. Hyprland cancels key repeat when *any* key
+  // goes up and never hands it back to a key still held, so pressing Right, then
+  // Left, then releasing Right stopped the cursor dead while Left was still down
+  // — is_key_down confirmed it was. `release = true` binds are no help either:
+  // measured, once two bound keys are held, neither key's release bind fires.
+  //
+  // So when repeats lapse the compositor gets asked directly. bindings.lua owns
+  // the keys and evaluates the question there, which keeps keysyms out of here —
+  // is_key_down needs exact X spellings ("Left", not "LEFT"; "i", not "I") and
+  // answers nil for anything it does not recognise, so guessing them from bind
+  // names would be fragile. The answer names actions, like everything else.
+  function sustain(name, now) {
+    if (!root.actionDirs[name]) return
+    if (name !== root.lastHoldAction || !root.holdConfirmed) {
+      root.moveDir = root.actionDirs[name]
+      root.startSweep(name, now, root.holdH)
+    }
+    root.downUntil = now + root.keysGraceMs
+    if (!motionTimer.running) { root.lastTickAt = now; motionTimer.start() }
+  }
+
+  function onKeysDown(txt) {
+    root.keysDown = String(txt).trim()
+    // Deliberately not conditioned on holdConfirmed: motionTimer clears that the
+    // instant repeats lapse, which is ~40ms before this answer gets back, so
+    // requiring it here threw away every answer that mattered. A key the
+    // compositor says is down *should* be moving the cursor, so reviving a hold
+    // is the correct response, not an anomaly.
+    if (!root.active) { keysPoll.stop(); return }
+    var st = ({})
+    var parts = root.keysDown.split(/\s+/)
+    for (var i = 0; i < parts.length; i++) {
+      var kv = parts[i].split("=")
+      if (kv.length === 2) st[kv[0]] = (kv[1] === "true")
+    }
+    var now = Date.now()
+    if (st[root.lastHoldAction]) { root.sustain(root.lastHoldAction, now); return }
+    // The key driving the sweep is up. Another direction still down takes it over
+    // rather than the motion dying — the mirror of releasing the other key.
+    var names = ["up", "down", "left", "right"]
+    for (var j = 0; j < names.length; j++) {
+      if (names[j] !== root.lastHoldAction && st[names[j]]) {
+        root.sustain(names[j], now)
+        return
+      }
+    }
+    keysPoll.stop()
+  }
+
   // A repeat is the first proof that a key is genuinely held — nothing else
   // distinguishes a tap from a hold, since Hyprland gives no key release and
   // the first repeat only lands after input:repeat_delay (250ms).
@@ -873,6 +929,33 @@ Item {
     }
   }
 
+  Timer {
+    id: keysPoll
+    interval: root.keysPollMs
+    repeat: true
+    onTriggered: {
+      // Stops itself once an answer comes back with nothing held; see onKeysDown.
+      if (!root.active) { keysPoll.stop(); return }
+      if (!keysProbe.running) keysProbe.running = true
+    }
+  }
+
+  // Asks bindings.lua which direction keys are down, for the active keymap. The
+  // spelling dance covers bind names not matching keysyms: is_key_down wants
+  // "Left" where the bind says "LEFT", and "i" where it says "I". An unknown name
+  // answers nil, which `or` skips, so a wrong guess costs nothing.
+  Process {
+    id: keysProbe
+    command: ["hyprctl", "repl",
+      'local k = ((MOUSEKEYS or {}).keys or {})["' + root.keymap + '"] or {} '
+      + 'local function d(s) if not s then return false end '
+      + 'for _, n in ipairs({ s, s:lower(), s:sub(1,1):upper() .. s:sub(2):lower() }) do '
+      + 'if hl.is_key_down(n) then return true end end return false end '
+      + 'return "up=" .. tostring(d(k.up)) .. " down=" .. tostring(d(k.down)) '
+      + '.. " left=" .. tostring(d(k.left)) .. " right=" .. tostring(d(k.right))']
+    stdout: StdioCollector { onStreamFinished: root.onKeysDown(text) }
+  }
+
   Process {
     id: cursorProc
     command: ["hyprctl", "cursorpos", "-j"]
@@ -966,6 +1049,15 @@ Item {
       var dt = Math.min(0.1, Math.max(0.001, (now - root.lastTickAt) / 1000))
       root.lastTickAt = now
       var down = root.holdConfirmed && (now < root.downUntil)
+      // Arm the poll a little before the hold would lapse. Healthy repeats arrive
+      // every 25ms and push downUntil 55ms out, so this never fires during an
+      // ordinary sweep — only once repeats actually stop, which is either a real
+      // release or the multi-key case above.
+      if (root.holdConfirmed && !keysPoll.running
+          && now >= root.downUntil - root.keysArmMs) {
+        keysPoll.start()
+        if (!keysProbe.running) keysProbe.running = true
+      }
       if (down) {
         root.holdH = Math.min(root.sweepMs / 1000, root.holdH + dt)
         root.pokeIdle()

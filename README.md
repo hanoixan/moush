@@ -417,6 +417,26 @@ shows the difference.
 
 Two consequences fall out of the bind route:
 
+- **Two keys held at once needs the compositor asked directly.** Hyprland cancels
+  key repeat when *any* key is released and never hands it back to a key still
+  held, so pressing Right, then Left, then releasing Right stopped the cursor dead
+  even though Left was still down — `is_key_down` confirmed it was. Release binds
+  are no help: measured, once two bound keys are held, *neither* key's release
+  bind fires, and a held set built from them silently never empties. So when
+  repeats lapse the plugin asks `hl.is_key_down` which direction keys are down,
+  and either sustains the sweep or hands it to whichever direction is still held.
+
+  The question is evaluated in `bindings.lua`, which publishes its key table for
+  the purpose, so keysyms stay out of the plugin: `is_key_down` wants exact X
+  spellings — `Left` where the bind says `LEFT`, `i` where it says `I` — and
+  answers nil for anything it does not recognise. The reply names actions, like
+  everything else here.
+
+  The poll is armed `keysArmMs` before a hold would lapse, which never happens
+  during an ordinary sweep: repeats arrive every 25ms and push the deadline 55ms
+  out, so the margin is never crossed while they keep coming. It costs nothing
+  until repeats actually stop.
+
 - **Movement never waits for a key release**, because none is available to it:
   a `release = true` bind fires when it dispatches `exec_cmd` but never when it
   dispatches `hl.dsp.global`. Movement rides Hyprland's own key repeat instead

@@ -97,7 +97,7 @@ Item {
                                       apostrophe: "'", semicolon: ";", comma: ",",
                                       period: ".", slash: "/", minus: "-", grave: "`" })
   readonly property real mashExp: 3.0         // maps mash rate to impulse, see README
-  readonly property real mashVMax: 8000       // px/s ceiling so a long mash cannot run away
+  readonly property real mashVMax: 1000       // px/s ceiling so a long mash cannot run away
   readonly property real mashScrollPx: 90     // px of ball travel per wheel detent
   readonly property int wheelPollMs: 70       // w gives no reliable release; ask instead
 

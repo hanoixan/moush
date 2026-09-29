@@ -429,15 +429,15 @@ Item {
       // leaves the cursor resting on the edge rather than doing nothing.
       var far = horiz ? root.screenW - 1 : root.screenH - 1
       if (unbounded) {
-        if (e <= 0 || e >= far) { if (!root.crossBeyond(horiz, sign)) root.focusLanding(horiz) }
-        else root.focusLanding(horiz)
+        if (e <= 0 || e >= far) { if (!root.crossBeyond(horiz, sign)) root.focusLanding(horiz, sign) }
+        else root.focusLanding(horiz, sign)
       }
       return
     }
     if (unbounded) {
       // Nowhere left to snap: the double-tap ran into the screen edge, so take
       // it as "keep going" and try to cross out of the screen entirely.
-      if (!root.crossBeyond(horiz, sign)) root.focusLanding(horiz)
+      if (!root.crossBeyond(horiz, sign)) root.focusLanding(horiz, sign)
       return
     }
     root.warp(root.curX + dir[0] * px, root.curY + dir[1] * px)
@@ -496,7 +496,10 @@ Item {
       if (!(o.size[0] > 0) || !(o.size[1] > 0)) continue
       out.push({ address: String(o.address),
                  x: o.at[0] - root.screenX, y: o.at[1] - root.screenY,
-                 w: o.size[0], h: o.size[1] })
+                 w: o.size[0], h: o.size[1],
+                 floating: o.floating === true,
+                 // 0 is the focused window, 1 the one before it, and so on.
+                 age: typeof o.focusHistoryID === "number" ? o.focusHistoryID : 1e9 })
     }
     return out
   }
@@ -529,12 +532,31 @@ Item {
   // A skitter that lands inside a window nobody is focused on: adopt it. The
   // pointer is already inside, and Hyprland only warps when focusing a window
   // the pointer is *outside* of, so this costs no cursor movement at all.
-  function focusLanding(horiz) {
+  // Probe one pixel *along the direction of travel* rather than at the cursor.
+  // A window's far edge sits at x + w, one past its last pixel, so arriving on
+  // it from the other side lands outside the window we just reached: snapping
+  // leftwards onto a window's right edge left it unfocused, while the mirror
+  // case going right worked, because a left edge is the window's first pixel.
+  // Nudging also settles which window an edge belongs to when two of them touch
+  // with no gap — the one being entered wins, not whichever was listed last.
+  function focusLanding(horiz, sign) {
+    var px = root.curX + (horiz ? sign : 0)
+    var py = root.curY + (horiz ? 0 : sign)
+    // Windows overlap, so pick the one actually on top rather than whichever the
+    // compositor happened to list last — that order is not z-order (a window
+    // focused three ago was listed ahead of the one focused last). Floating sits
+    // above tiled in Hyprland, and among equals the more recently focused one is
+    // the one you can see.
+    var best = null
     var list = root.windowsHere()
-    for (var i = list.length - 1; i >= 0; i--) {   // last drawn wins an overlap
-      var t = list[i]
-      if (root.curX < t.x || root.curX >= t.x + t.w) continue
-      if (root.curY < t.y || root.curY >= t.y + t.h) continue
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i]
+      if (px < c.x || px >= c.x + c.w) continue
+      if (py < c.y || py >= c.y + c.h) continue
+      if (!best || (c.floating !== best.floating ? c.floating : c.age < best.age)) best = c
+    }
+    if (best) {
+      var t = best
       if (t.address === root.focusedAddress()) return   // already ours, nothing moves
       // Focusing can pan the workspace under a stationary pointer, so remember
       // where in this window we are and restore that afterwards. Under a layout
@@ -546,7 +568,6 @@ Item {
       root.crossCross = horiz ? root.curY : root.curX
       root.log("focus landing " + t.address)
       resyncTimer.restart()
-      return
     }
   }
 

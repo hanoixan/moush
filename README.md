@@ -158,6 +158,19 @@ address** — never by direction.
 - **Landing inside an unfocused window** adopts it. The pointer is already
   inside, and Hyprland only warps when focusing a window the pointer is *outside*
   of, so this costs no cursor movement at all.
+
+  Which window that is gets decided one pixel **along the direction of travel**,
+  not at the cursor itself. A window's far edge sits at `x + w`, one past its last
+  pixel, so arriving on it from the other side lands *outside* the window just
+  reached: snapping leftwards onto a window's right edge left it unfocused, while
+  the mirror case going right worked, because a left edge is a window's first
+  pixel. Nudging also settles which window an edge belongs to when two of them
+  touch with no gap — the one being entered wins.
+
+  When windows overlap, the one on top wins: floating above tiled, and among
+  equals the more recently focused (`focusHistoryID`). Hyprland's client list is
+  not in z-order — a window focused three ago was listed ahead of the one focused
+  last — so it cannot be used to break the tie.
 - **Landing on the screen's own edge** looks for a window with content past that
   boundary — exactly the windows that are not snap targets because they are
   unreachable — and focuses the nearest one.

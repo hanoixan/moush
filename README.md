@@ -295,7 +295,7 @@ Hyprland's key repeat also arrives on the same key well inside `fast_tap_ms`, so
 would skitter to the screen edge instead of sweeping. Two things separate them:
 
 - Anything within `repeatGapMs` (55ms) is classified as a repeat and drives the
-  sweep, so only the 55–130ms band can count as fast tapping.
+  sweep, so only the 55–135ms band can count as fast tapping.
 - A repeat **delayed under load** still lands in that band, so the event before
   it is checked too (`prevGap`). A deliberate re-press can only follow a release,
   so it is never preceded by another event one repeat-interval earlier; a delayed

@@ -51,7 +51,7 @@ Item {
   // bindings.lua owns the keys, so it owns this too — see luaConf. Hyprland's
   // Lua VM keeps globals across config loads, so MOUSEKEYS.fast_tap_ms set there
   // is readable from here and survives a hyprctl reload.
-  property int fastTapMs: 130                 // re-pressing a key quicker than this skitters
+  property int fastTapMs: 135                 // re-pressing a key quicker than this skitters
   readonly property int scrollEndDetents: 120 // a fast scroll re-tap runs to the end of the view
   readonly property int resyncMs: 130         // wait for a focus warp to settle, then re-read
   readonly property int landMs: 60            // ...then for the refreshed geometry to arrive

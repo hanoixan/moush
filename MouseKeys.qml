@@ -97,7 +97,7 @@ Item {
                                       apostrophe: "'", semicolon: ";", comma: ",",
                                       period: ".", slash: "/", minus: "-", grave: "`" })
   readonly property real mashExp: 3.0         // maps mash rate to impulse, see README
-  readonly property real mashVMax: 1000       // px/s ceiling so a long mash cannot run away
+  property real mashVMax: 1000                // px/s ceiling; also the longest throw
   readonly property real mashScrollPx: 90     // px of ball travel per wheel detent
   readonly property int wheelPollMs: 70       // w gives no reliable release; ask instead
 
@@ -295,7 +295,7 @@ Item {
       + " keysDown=" + (root.keysDown === "" ? "none" : root.keysDown.replace(/ /g, ","))
       + " ball=" + root.ballVX.toFixed(0) + "," + root.ballVY.toFixed(0)
       + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
-      + " gain=" + root.mashGain.toFixed(2)
+      + " gain=" + root.mashGain.toFixed(2) + " vmax=" + root.mashVMax
       + " cluster=" + root.mashTrail.length
       + " strategy=" + root.mashStrategy
       + " shown=[" + root.mashDebugStrategies.join(",") + "]"
@@ -1407,7 +1407,8 @@ Item {
       + '.. " labels=" .. table.concat(t, ",") '
       + '.. " mash_strategy=" .. tostring(m.mash_strategy or "") '
       + '.. " mash_debug_strategies=" .. tostring(m.mash_debug_strategies or "") '
-      + '.. " mash_gain=" .. tostring(m.mash_gain or "")']
+      + '.. " mash_gain=" .. tostring(m.mash_gain or "") '
+      + '.. " mash_vmax=" .. tostring(m.mash_vmax or "")']
     stdout: StdioCollector {
       // "fast_tap_ms=135 carry_ms=135" — named pairs so adding a knob is one term
       // here and one in bindings.lua, and a missing one just keeps its default.
@@ -1454,6 +1455,9 @@ Item {
           } else if (kv[0] === "carry_ms" && v !== root.carryMs) {
             root.carryMs = v
             root.log("carryMs <- " + v + " (bindings.lua)")
+          } else if (kv[0] === "mash_vmax" && v !== root.mashVMax) {
+            root.mashVMax = v
+            root.log("mashVMax <- " + v + " (bindings.lua)")
           }
         }
       }

@@ -48,9 +48,13 @@ Item {
   // ---- tunables -------------------------------------------------------------
   readonly property real baseStep: 8          // floor: any press moves at least this
   readonly property real edgeEpsilon: 0.5     // an edge this close counts as already there
-  readonly property int fastTapMs: 150        // re-pressing a key quicker than this skitters
+  // bindings.lua owns the keys, so it owns this too — see luaConf. Hyprland's
+  // Lua VM keeps globals across config loads, so MOUSEKEYS.fast_tap_ms set there
+  // is readable from here and survives a hyprctl reload.
+  property int fastTapMs: 130                 // re-pressing a key quicker than this skitters
   readonly property int scrollEndDetents: 120 // a fast scroll re-tap runs to the end of the view
   readonly property int resyncMs: 130         // wait for a focus warp to settle, then re-read
+  readonly property int landMs: 60            // ...then for the refreshed geometry to arrive
   readonly property int sweepMs: 1500         // hold this long to cross one screen width
   readonly property real scrollMaxRate: 25    // detents/s at full acceleration
   readonly property int motionTickMs: 16      // how often held motion is integrated
@@ -141,6 +145,13 @@ Item {
   }
 
 
+  // Set while a skitter is crossing into another window: which window we asked
+  // for, which way we were going, and the cross-axis position to preserve.
+  property string crossTarget: ""
+  property bool crossHoriz: true
+  property real crossOff: 0                   // where in the window to sit, along travel
+  property real crossCross: 0                 // screen coordinate to hold on the other axis
+
   // ---- session state ----------------------------------------------------------
   property bool opened: false                 // overlay mapped (from the chord press)
   property bool active: false                 // ...and the keys actually do something
@@ -182,7 +193,9 @@ Item {
   // Diagnostic: omarchy-shell shell call <id> probe ""
   function probe() {
     return "opened=" + root.opened + " active=" + root.active + " sticky=" + root.sticky
-      + " keymap=" + root.keymap
+      + " keymap=" + root.keymap + " fastTap=" + root.fastTapMs
+      + " cur=" + Math.round(root.curX) + "," + Math.round(root.curY)
+      + " focus=" + root.focusedAddress()
       + " idle=" + idleTimer.running + " long=" + longPressTimer.running
       + " moving=" + motionTimer.running + " held=" + root.holdConfirmed
       + " edges=" + root.edgesX.length + "/" + root.edgesY.length
@@ -229,7 +242,8 @@ Item {
     root.curX = scr.width / 2
     root.curY = scr.height / 2
     cursorProc.running = true
-    Hyprland.refreshToplevels()
+    luaConf.running = true
+    root.refreshState()
     root.collectEdges()
 
     // Empty submap so Omarchy's own bindings can't eat movement keys, and so
@@ -336,7 +350,7 @@ Item {
 
   function collectEdges() {
     var vx = [], hy = []
-    var ws = Hyprland.focusedWorkspace ? String(Hyprland.focusedWorkspace.name) : ""
+    var ws = root.workspaceName()
     var list = Hyprland.toplevels ? Hyprland.toplevels.values : []
     for (var i = 0; i < list.length; i++) {
       var o = list[i].lastIpcObject
@@ -409,21 +423,21 @@ Item {
     if (!isNaN(e)) {
       if (horiz) root.warp(e, root.curY)
       else root.warp(root.curX, e)
-      // A double-tap whose hop lands on the screen's own edge means "keep
-      // going", so hand off as well. If there is no neighbour that way it is a
-      // no-op and the cursor simply rests at the edge, which is why the warp
-      // happens either way.
+      // A double-tap that hops onto the screen's own edge means "keep going",
+      // so try to cross out of it; anywhere else, just adopt whatever window we
+      // landed in. The warp happens either way, so running out of places to go
+      // leaves the cursor resting on the edge rather than doing nothing.
       var far = horiz ? root.screenW - 1 : root.screenH - 1
-      if (unbounded && (e <= 0 || e >= far)) root.focusNeighbour(horiz, sign)
+      if (unbounded) {
+        if (e <= 0 || e >= far) { if (!root.crossBeyond(horiz, sign)) root.focusLanding(horiz) }
+        else root.focusLanding(horiz)
+      }
       return
     }
     if (unbounded) {
-      // Nowhere left to snap means the double-tap ran into the screen edge, so
-      // take it as "keep going" and hand off to Hyprland's directional focus —
-      // the very action Omarchy's SUPER+LEFT/RIGHT binds run. Synthesising that
-      // keystroke instead would do nothing: SUPER+RIGHT is not bound inside our
-      // own submap, so the key would just be swallowed.
-      root.focusNeighbour(horiz, sign)
+      // Nowhere left to snap: the double-tap ran into the screen edge, so take
+      // it as "keep going" and try to cross out of the screen entirely.
+      if (!root.crossBeyond(horiz, sign)) root.focusLanding(horiz)
       return
     }
     root.warp(root.curX + dir[0] * px, root.curY + dir[1] * px)
@@ -443,13 +457,174 @@ Item {
     root.hypr("hl.dsp.cursor.move({ x = " + ix + ", y = " + iy + " })")
   }
 
-  // Focusing a neighbour warps the cursor into it, which leaves our tracked
-  // position stale — so re-read it once the warp has settled.
-  function focusNeighbour(horiz, sign) {
-    var dir = horiz ? (sign > 0 ? "r" : "l") : (sign > 0 ? "d" : "u")
-    root.hypr('hl.dsp.focus({ direction = "' + dir + '" })')
-    root.log("focus " + dir)
+  // ---- crossing into another window -----------------------------------------
+  // Focus is always by address, never by direction. hl.dsp.focus({ direction })
+  // asks the *layout* what comes next, which on a single monitor is simply
+  // another tiled window, and Hyprland then drags the pointer into it
+  // (cursor:no_warps = false) — the cursor jumps somewhere you never aimed at.
+  // Addressing the window the cursor actually reached keeps focus and pointer in
+  // agreement, and works the same under dwindle, scrolling, master or anything
+  // else, because it names a window instead of asking about layout order.
+
+  // Toplevel geometry AND the workspace they are filtered against both have to be
+  // current. Refreshing only the toplevels leaves focusedWorkspace stale, and a
+  // stale workspace means windowsHere() hands back windows from somewhere else —
+  // which focusWindow() would then follow, dragging the user to another
+  // workspace. Measured: switching workspace outside the shell left the cache
+  // pointing at the old one, and a skitter focused a window there.
+  function refreshState() {
+    Hyprland.refreshWorkspaces()
+    Hyprland.refreshMonitors()
+    Hyprland.refreshToplevels()
+  }
+
+  function workspaceName() {
+    return Hyprland.focusedWorkspace ? String(Hyprland.focusedWorkspace.name) : ""
+  }
+
+  // Every mapped window on this screen's workspace, in screen-relative coords.
+  function windowsHere() {
+    var out = []
+    var ws = root.workspaceName()
+    if (ws === "") return out
+    var list = Hyprland.toplevels ? Hyprland.toplevels.values : []
+    for (var i = 0; i < list.length; i++) {
+      var o = list[i].lastIpcObject
+      if (!o || o.mapped !== true || o.hidden === true) continue
+      if (!o.workspace || String(o.workspace.name) !== ws) continue
+      if (!o.at || !o.size || !o.address) continue
+      if (!(o.size[0] > 0) || !(o.size[1] > 0)) continue
+      out.push({ address: String(o.address),
+                 x: o.at[0] - root.screenX, y: o.at[1] - root.screenY,
+                 w: o.size[0], h: o.size[1] })
+    }
+    return out
+  }
+
+  function focusedAddress() {
+    var t = Hyprland.activeToplevel
+    var o = t ? t.lastIpcObject : null
+    return o && o.address ? String(o.address) : ""
+  }
+
+  // windowsHere() already filters by workspace, but that filter and this check
+  // both hang off cached state, so re-read the window's own workspace before
+  // committing: moving the pointer must never move the user off their workspace.
+  function focusWindow(address) {
+    var ws = root.workspaceName()
+    var list = Hyprland.toplevels ? Hyprland.toplevels.values : []
+    for (var i = 0; i < list.length; i++) {
+      var o = list[i].lastIpcObject
+      if (!o || String(o.address) !== address) continue
+      if (!o.workspace || String(o.workspace.name) !== ws) {
+        root.log("refusing cross-workspace focus " + address)
+        return false
+      }
+      root.hypr('hl.dsp.focus({ window = "address:' + address + '" })')
+      return true
+    }
+    return false
+  }
+
+  // A skitter that lands inside a window nobody is focused on: adopt it. The
+  // pointer is already inside, and Hyprland only warps when focusing a window
+  // the pointer is *outside* of, so this costs no cursor movement at all.
+  function focusLanding(horiz) {
+    var list = root.windowsHere()
+    for (var i = list.length - 1; i >= 0; i--) {   // last drawn wins an overlap
+      var t = list[i]
+      if (root.curX < t.x || root.curX >= t.x + t.w) continue
+      if (root.curY < t.y || root.curY >= t.y + t.h) continue
+      if (t.address === root.focusedAddress()) return   // already ours, nothing moves
+      // Focusing can pan the workspace under a stationary pointer, so remember
+      // where in this window we are and restore that afterwards. Under a layout
+      // that does not pan, the offset resolves to where we already stand.
+      if (!root.focusWindow(t.address)) return
+      root.crossTarget = t.address
+      root.crossHoriz = horiz
+      root.crossOff = horiz ? root.curX - t.x : root.curY - t.y
+      root.crossCross = horiz ? root.curY : root.curX
+      root.log("focus landing " + t.address)
+      resyncTimer.restart()
+      return
+    }
+  }
+
+  // Out of edges on this screen: the skitter wants to keep going, so look for a
+  // window with content past the boundary that way — exactly the windows
+  // collectEdges() refuses as snap targets because they are unreachable. One
+  // rule covers every layout: a scrolling workspace pans the row to reveal it, a
+  // second monitor brings its window in, and under dwindle nothing reaches past
+  // the screen so the cursor just rests at the edge. Returns whether it acted.
+  function crossBeyond(horiz, sign) {
+    var far = (horiz ? root.screenW : root.screenH) - 1
+    var cross = horiz ? root.curY : root.curX
+    var focused = root.focusedAddress()
+    var best = null, bestNear = 0
+    var list = root.windowsHere()
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i]
+      // Already focused and still overhanging means the layout has fitted it as
+      // far as it intends to; re-focusing would not move anything.
+      if (t.address === focused) continue
+      var lo = horiz ? t.y : t.x
+      var hi = lo + (horiz ? t.h : t.w)
+      if (cross < lo || cross > hi) continue
+      var near = horiz ? t.x : t.y
+      var end = near + (horiz ? t.w : t.h)
+      // Does it reach past the boundary we are pinned against?
+      var over = sign > 0 ? end - far : 0 - near
+      if (over <= root.edgeEpsilon) continue
+      // Nearest first along the direction of travel, so a row is crossed one
+      // window at a time rather than jumping to the far end.
+      if (!best || (sign > 0 ? near < bestNear : near > bestNear)) {
+        best = t; bestNear = near
+      }
+    }
+    if (!best) { root.log("nothing beyond " + (sign > 0 ? "+" : "-")); return false }
+    if (!root.focusWindow(best.address)) return false
+    root.crossTarget = best.address
+    root.crossHoriz = horiz
+    // Entering edge: crossing rightwards puts us on the window's left side.
+    root.crossOff = sign > 0 ? 0 : (horiz ? best.w : best.h) - 1
+    root.crossCross = cross
+    root.log("cross into " + best.address)
+    // The focus settles in ~23ms but every window on a scrolling workspace moves
+    // with it, so wait for the warp, refresh, then land — see resyncTimer.
     resyncTimer.restart()
+    return true
+  }
+
+  // Two ways the pointer ends up wrong after a focus change, both fixed here.
+  // Hyprland drops the pointer on the *centre* of a window it focuses (measured
+  // 367px from the edge we left through, with the cross-axis position thrown
+  // away), which breaks a sweep in half. Put it where the movement was heading:
+  // the edge we entered through, at the height we left at. curX/curY never adopt
+  // the centre, and the visible pointer is our own marker
+  // (cursor:hide_on_key_press hides the real one), so that excursion is never
+  // drawn — the marker goes from the old edge straight to the new one.
+  function landOnEdge() {
+    var want = root.crossTarget
+    root.crossTarget = ""
+    var list = root.windowsHere()
+    for (var i = 0; i < list.length; i++) {
+      var t = list[i]
+      if (t.address !== want) continue
+      var horiz = root.crossHoriz
+      var origin = horiz ? t.x : t.y
+      var travel = origin + root.crossOff
+      var lo = horiz ? t.y : t.x
+      var hi = lo + (horiz ? t.h : t.w) - 1
+      var cross = Math.min(Math.max(root.crossCross, lo), hi)
+      root.cursorKnown = true
+      if (horiz) root.warp(travel, cross)
+      else root.warp(cross, travel)
+      root.log("landed at " + Math.round(travel) + "," + Math.round(cross))
+      return
+    }
+    // It went away mid-flight; fall back to believing the compositor.
+    root.cursorKnown = false
+    cursorProc.running = true
   }
 
   // ---- key routing ----------------------------------------------------------
@@ -588,6 +763,26 @@ Item {
     onLoaded: root.loadState(text())
   }
 
+  // bindings.lua is where every key lives, so the timing that goes with them
+  // belongs there too rather than in a second file. Hyprland's Lua VM keeps its
+  // globals, so a MOUSEKEYS table assigned at config load can simply be read
+  // back — and it re-reads on every session, so hyprctl reload is enough to
+  // apply a change.
+  Process {
+    id: luaConf
+    command: ["hyprctl", "repl",
+      'return tostring((MOUSEKEYS and MOUSEKEYS.fast_tap_ms) or "")']
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var v = parseInt(String(text).trim(), 10)
+        if (v > 0 && v !== root.fastTapMs) {
+          root.fastTapMs = v
+          root.log("fastTapMs <- " + v + " (bindings.lua)")
+        }
+      }
+    }
+  }
+
   Process {
     id: cursorProc
     command: ["hyprctl", "cursorpos", "-j"]
@@ -609,15 +804,35 @@ Item {
 
 
 
+  // Crossing focus moves more than the pointer: on a scrolling workspace the
+  // whole row pans, so every window's coordinates change and the edge list is
+  // stale too. Hyprland reports the settled geometry straight away (measured at
+  // 23ms, while the pan is still visibly animating), so the refresh is asked for
+  // here and collected one landMs later, once it has arrived.
   Timer {
     id: resyncTimer
     interval: root.resyncMs
     onTriggered: {
       if (!root.active) return
-      root.cursorKnown = false      // let cursorProc's result through
-      root.sentX = -1               // and force the next warp to dispatch
+      root.sentX = -1               // force the next warp to dispatch
       root.sentY = -1
-      cursorProc.running = true
+      root.refreshState()
+      landTimer.restart()
+    }
+  }
+
+  Timer {
+    id: landTimer
+    interval: root.landMs
+    onTriggered: {
+      if (!root.active) return
+      root.collectEdges()
+      if (root.crossTarget !== "") {
+        root.landOnEdge()
+      } else {
+        root.cursorKnown = false    // let cursorProc's result through
+        cursorProc.running = true
+      }
     }
   }
 

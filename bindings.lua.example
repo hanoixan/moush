@@ -4,6 +4,20 @@
 hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
   { submap_universal = true, description = "Mouse keys" })
 
+-- Timing the plugin needs but Hyprland has no option for. Hyprland keeps its Lua
+-- globals across config loads, so the plugin reads this table back over
+-- `hyprctl repl` when a session starts — which means hyprctl reload is enough to
+-- apply a change, no shell restart.
+--
+--   fast_tap_ms  re-pressing the same key quicker than this is a "double tap":
+--                a move key skitters to the next window edge or corner instead
+--                of stepping, and a scroll key runs to the top or bottom of the
+--                view. Must stay under input:repeat_delay (250ms), or a held
+--                key's first auto-repeat would read as a deliberate re-press.
+MOUSEKEYS = {
+  fast_tap_ms = 130,
+}
+
 -- Each keymap is a submap. The binds name ACTIONS, not keys, so remapping is a
 -- one-line edit here and needs no change to the plugin — and adding a fourth
 -- keymap is just another call plus its name in shell.json.

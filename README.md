@@ -30,7 +30,7 @@ modifiers then ride along on the pointer events the plugin injects. So
 is underneath, and `Shift`+click extends a selection. Measured: the client sees
 `mods=33554432` (Shift) and `mods=67108864` (Ctrl) on the injected events.
 
-**Re-tapping a scroll key within `fastTapMs` (150ms)** sends
+**Re-tapping a scroll key within `fast_tap_ms` (130ms)** sends
 `scrollEndDetents` (120) notches in one event, which carries an ordinary view to
 its beginning or end.
 
@@ -59,6 +59,20 @@ plugin settings — inline on the plugin's own entry:
 ```json
 { "id": "mousekeys", "keymaps": ["arrows", "left"] }
 ```
+
+Timing goes in `bindings.lua` too, so the keys and the behaviour that depends on
+them stay in one file. Hyprland keeps its Lua globals across config loads, so the
+plugin reads this table back over `hyprctl repl` when a session starts — which
+means `hyprctl reload` is enough to apply a change, with no shell restart:
+
+```lua
+MOUSEKEYS = {
+  fast_tap_ms = 130,   -- re-press the same key quicker than this to double-tap
+}
+```
+
+`fast_tap_ms` must stay under `input:repeat_delay` (250ms), or a held key's first
+auto-repeat would read as a deliberate re-press.
 
 Omit it and you get `["left", "right", "arrows"]`. Names must match the
 `mousekeys_map` calls: the plugin dispatches `hl.dsp.submap("mousekeys-<name>")`
@@ -128,44 +142,96 @@ ahead of the cursor in that direction:
 | | search range | effect |
 |---|---|---|
 | **single press** | within the distance this press would travel | lands on an edge it would otherwise step over; otherwise moves the full distance |
-| **double-tap** — same key re-pressed within `fastTapMs` (150ms) | unbounded | skitters to the next edge however far away |
+| **double-tap** — same key re-pressed within `fast_tap_ms` (130ms) | unbounded | skitters to the next edge however far away |
 
 Only edges **on screen** are candidates. Windows routinely extend past the
 display, and an edge you cannot reach is not a snap target: `warp()` clamps it
 back, so the press appears to do nothing — and worse, it hides the fact that the
 skitter has run out of edges.
 
-#### Walking off the edge of the screen
+#### Crossing into another window
 
-When a double-tap's hop would land on any of the screen's own edges, the plugin
-also runs Hyprland's directional focus — the same action Omarchy's `SUPER+LEFT`,
-`SUPER+RIGHT`, `SUPER+UP` and `SUPER+DOWN` binds perform. Focusing a neighbour
-warps the cursor into it, so a run of double-taps walks edge to edge across one
-window, then crosses into the next and carries on. All four directions behave
-the same way.
+A run of double-taps walks edge to edge across a window, crosses into the next,
+and carries on. Two things happen along the way, and both **focus a window by
+address** — never by direction.
+
+- **Landing inside an unfocused window** adopts it. The pointer is already
+  inside, and Hyprland only warps when focusing a window the pointer is *outside*
+  of, so this costs no cursor movement at all.
+- **Landing on the screen's own edge** looks for a window with content past that
+  boundary — exactly the windows that are not snap targets because they are
+  unreachable — and focuses the nearest one.
+
+`hl.dsp.focus({ direction = … })` is deliberately **not** used, and that is the
+whole point of this section. It asks the *layout* what comes next, which on a
+single monitor is just another tiled window, and Hyprland then drags the pointer
+into it (`cursor:no_warps = false`) — the cursor arrives somewhere you never
+aimed at. Naming the window instead keeps focus and pointer in agreement.
+
+**Why this is the same in every layout.** Addressing a window says nothing about
+layout order, so the rule needs no per-layout cases — and each layout then does
+its own native thing with the focus:
+
+| layout | window past the screen edge? | what focusing it does |
+|---|---|---|
+| `scrolling` | yes — the row is wider than the viewport | pans the row to reveal it (`scrolling:follow_focus`) |
+| second monitor | yes — its windows are past the edge | brings that monitor's window in |
+| `dwindle`, `master` | no — everything is on screen | nothing; the cursor rests on the edge |
+
+There is no API for the other approach — moving the viewport *without* focusing.
+`hl.dsp.focus` takes only `window`, `direction`, `monitor`, `workspace` and
+`urgent_or_last`; the `scrolling` layout's `layoutmsg` vocabulary is
+`fit_into_view promote colresize consume consume_or_expel inhibit_scroll monocle`
+and none of them pans on its own (`+col`, `-col`, `toend`, `tobeg` and `expand`
+return *"no such layoutmsg for scrolling"* — they belong to `master`). With
+`scrolling:follow_focus = true`, focus **is** the pan mechanism.
+
+##### Keeping the pointer continuous
+
+A focus change can move the pointer in two ways, and both would break a sweep in
+half, so the landing position is always recomputed rather than accepted:
+
+- **Hyprland drops the pointer on the centre of a window it focuses** — measured
+  367px from the edge the sweep left through, with the cross-axis position thrown
+  away entirely.
+- **The workspace can pan under a stationary pointer.** Focusing a partly-visible
+  column moved it from `1503..2237` to `790..1524`; the pointer stayed at screen
+  x=1503 and so ended up near the window's right side having entered from its
+  left.
+
+Both are fixed by remembering where in the target window the pointer belongs —
+the entering edge when crossing in from outside, or its existing offset when it
+is already inside — and restoring that once the geometry settles, with the
+cross-axis coordinate preserved and clamped into the new window's span.
 
 ```
-horizontal, three windows side by side:
-  0 -> 12 -> 746 -> 760 -> 1489 -> 1503 -> [focus right, cursor lands at 1124]
-  1124 -> 1489 -> 1503 -> [focus right, cursor lands at 1157]
-
-vertical, two windows stacked:
-  852 -> [focus down, cursor lands at 238]
-  238 -> 438 -> 452 -> 852 -> [focus down, cursor lands at 652]
+double-tapping right across a scrolling row (y held at 300 throughout):
+  300 -> 746 -> 760 -> 1489 -> 790 -> 1524 -> 1535 -> stays
+                               ^^^ crossed in; row panned, pointer followed it
 ```
 
-Two details make this behave:
+The correction is safe to make because Hyprland issues exactly **one** warp, at
+focus time, settled within 23ms. A correction dispatched 0, 25, 60 or 130ms
+later stuck in all four cases — there is no second warp to lose a race against.
+Nor is there any need to wait out the pan animation: `at`/`size` report the
+*settled* geometry immediately, while the row is still visibly sliding.
 
-- It **dispatches the action, not the keystroke.** Synthesising `SUPER+RIGHT`
-  would be swallowed — that combination is not bound inside the plugin's own
-  submap — so it calls `hl.dsp.focus({ direction = ... })` directly.
-- The warp to the screen edge happens **either way**. If there is no neighbour in
-  that direction the focus call is a no-op and the cursor simply rests at the
-  edge, so the gesture never dead-ends.
+The user never sees the centre excursion, because `curX`/`curY` never adopt it
+and the visible pointer is the plugin's own marker
+(`cursor:hide_on_key_press` hides the real one) — the marker goes from the old
+edge straight to the new one.
 
-Because the focus warp moves the cursor behind the plugin's back, the tracked
-position is re-read from the compositor `resyncMs` afterwards; without that the
-next press would teleport from a stale position.
+**The whole edge list is refreshed too**, not just the pointer. A pan moves every
+window on the workspace — one went from `12` to `-701` — so the coordinates
+collected before the crossing describe edges that no longer exist.
+
+**Focusing must never change workspace.** Window lookup filters by Quickshell's
+cached `focusedWorkspace`, and a stale cache hands back windows from elsewhere —
+which focusing would then follow, dragging you to another workspace. This was
+observed: switching workspace outside the shell left the cache pointing at the
+old one and a skitter focused a window there. So the refresh covers workspaces
+and monitors as well as toplevels, and a window's own workspace is re-checked
+immediately before focusing it.
 
 Edges come from Quickshell's Hyprland toplevels, whose `lastIpcObject` carries
 `at`/`size` **in process** — no subprocess, so the set is rebuilt on every
@@ -181,12 +247,12 @@ it, rather than pinning to the first one it meets.
 
 #### Fast tapping and auto-repeat share a window
 
-Hyprland's key repeat also arrives on the same key well inside `fastTapMs`, so
+Hyprland's key repeat also arrives on the same key well inside `fast_tap_ms`, so
 "tapped again quickly" and "still held down" have to be told apart or a held key
 would skitter to the screen edge instead of sweeping. Two things separate them:
 
 - Anything within `repeatGapMs` (55ms) is classified as a repeat and drives the
-  sweep, so only the 55–150ms band can count as fast tapping.
+  sweep, so only the 55–130ms band can count as fast tapping.
 - A repeat **delayed under load** still lands in that band, so the event before
   it is checked too (`prevGap`). A deliberate re-press can only follow a release,
   so it is never preceded by another event one repeat-interval earlier; a delayed
@@ -197,7 +263,7 @@ would skitter to the screen edge instead of sweeping. Two things separate them:
 Consequences:
 
 - A **held** key never skitters. Its first repeat lands ~250ms out (outside
-  `fastTapMs`) and the rest arrive 25–34ms apart (inside `repeatGapMs`).
+  `fast_tap_ms`) and the rest arrive 25–34ms apart (inside `repeatGapMs`).
 - Tapping **faster than 55ms** is indistinguishable from auto-repeat, so it
   sweeps rather than skitters. That is the floor, and it cannot be lifted without
   key-release events, which this input path does not get.
@@ -219,10 +285,10 @@ Measured against a workspace with windows at `x:12..746`, `x:760..1489` and
 from x=0   tap right   ->    8    nothing within 8px, so a full step
            tap right   ->   12    snapped: the window edge was 4px away
            tap right   ->   20    nothing within 8px again
-      SHIFT+right      ->  746 -> 760 -> 1489 -> 1503 -> 1535 -> stays
-      SHIFT+left       -> 1503    and back again
+  dbl-tap right      ->  746 -> 760 -> 1489 -> 1503 -> 1535 -> stays
+  dbl-tap left       -> 1503    and back again
 sweep right 0.75s      ->  406px  passes through edges, does not stick
-from y=0   SHIFT+down  ->   38 -> 852 -> 863   window top, bottom, screen
+from y=0 dbl-tap down  ->   38 -> 852 -> 863   window top, bottom, screen
 ```
 
 Shift is not read as a separate key — it cannot be, with no keyboard grab. The

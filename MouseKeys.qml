@@ -92,7 +92,7 @@ Item {
   readonly property int keyLAlt: 56
 
   // ---- persisted setting ------------------------------------------------------
-  property string keymap: "right"
+  property string keymap: "arrows"
   readonly property string statePath: Quickshell.statePath("mousekeys.json")
 
   function loadState(text) {

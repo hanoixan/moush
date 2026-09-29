@@ -20,8 +20,8 @@ happened yet, the session is *armed but inert*: keys do nothing, no marker.
 |  | move (up/left/down/right) | left btn | middle btn | right btn | scroll up/down |
 |---|---|---|---|---|---|
 | **left** | `i` `j` `k` `l` | `c` | `x` | `z` | `y` / `h` |
-| **right** *(default)* | `w` `a` `s` `d` | `,` | `.` | `/` | `r` / `f` |
-| **arrows** | arrow keys | `d` | `s` | `a` | PgUp / PgDn |
+| **right** | `w` `a` `s` `d` | `,` | `.` | `/` | `r` / `f` |
+| **arrows** *(default)* | arrow keys | `d` | `s` | `a` | PgUp / PgDn |
 
 **Shift and Ctrl are yours, not the plugin's.** Every key is bound with
 `ignore_mods`, so it reaches the plugin whatever modifiers are held — and those

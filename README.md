@@ -30,7 +30,7 @@ modifiers then ride along on the pointer events the plugin injects. So
 is underneath, and `Shift`+click extends a selection. Measured: the client sees
 `mods=33554432` (Shift) and `mods=67108864` (Ctrl) on the injected events.
 
-**Re-tapping a scroll key within `fast_tap_ms` (130ms)** sends
+**Re-tapping a scroll key within `fast_tap_ms` (135ms)** sends
 `scrollEndDetents` (120) notches in one event, which carries an ordinary view to
 its beginning or end.
 
@@ -67,7 +67,7 @@ means `hyprctl reload` is enough to apply a change, with no shell restart:
 
 ```lua
 MOUSEKEYS = {
-  fast_tap_ms = 130,   -- re-press the same key quicker than this to double-tap
+  fast_tap_ms = 135,   -- re-press the same key quicker than this to double-tap
 }
 ```
 
@@ -142,7 +142,7 @@ ahead of the cursor in that direction:
 | | search range | effect |
 |---|---|---|
 | **single press** | within the distance this press would travel | lands on an edge it would otherwise step over; otherwise moves the full distance |
-| **double-tap** — same key re-pressed within `fast_tap_ms` (130ms) | unbounded | skitters to the next edge however far away |
+| **double-tap** — same key re-pressed within `fast_tap_ms` (135ms) | unbounded | skitters to the next edge however far away |
 
 An edge is stored as **the last pixel inside its window**, not the exclusive
 bound. A window at `x=12 w=734` covers `12..745`, so its right edge is `745`; the

@@ -35,6 +35,14 @@ hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
 --                                  mashing back and forth on one line as motion
 --                            ewma  every hop's velocity, newest weighted most;
 --                                  turns fastest, twitchiest
+--   mash_gain              how hard each press shoves the ball: the impulse is
+--                          mash_gain * speed^3, in px/s per (key-width/s)^3, and
+--                          a press carries mash_gain * speed^3 / 3 pixels once
+--                          friction has run out. Cubic because the two ends of
+--                          the scale are far apart — a press at two a second
+--                          should nudge one pixel, a four-press burst should
+--                          cross the screen — so small changes here are felt
+--                          hardest at the fast end.
 --   mash_debug_strategies  also computed and drawn in the debug view for
 --                          comparison, whether or not they are steering. Each
 --                          gets a colour and dash pattern from its own name.
@@ -42,6 +50,7 @@ MOUSEKEYS = {
   fast_tap_ms = 135,
   carry_ms = 175,
   mash_strategy = "lsq",
+  mash_gain = 0.30,
   mash_debug_strategies = "cpa,lsq,pca,ewma",
 }
 

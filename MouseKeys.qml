@@ -72,7 +72,7 @@ Item {
   // ---- mash ------------------------------------------------------------------
   readonly property int mashEwmaTauMs: 400    // ewma's decay constant; the rest use the cluster
   readonly property real mashFriction: 3.0    // e-folds per second of rolling decay
-  readonly property real mashGain: 0.53       // impulse per (key-width/s)^mashExp
+  property real mashGain: 0.30                // impulse per (key-width/s)^mashExp
   readonly property real mashStepPx: 1        // every press moves at least this far
   // A fit has to carry real speed to count. Zero is not a rounding error here: a
   // straight reversal (L K L) fits to an axis with exactly no motion along it, and
@@ -294,6 +294,7 @@ Item {
       + " keysDown=" + (root.keysDown === "" ? "none" : root.keysDown.replace(/ /g, ","))
       + " ball=" + root.ballVX.toFixed(0) + "," + root.ballVY.toFixed(0)
       + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
+      + " gain=" + root.mashGain.toFixed(2)
       + " cluster=" + root.mashTrail.length
       + " strategy=" + root.mashStrategy
       + " shown=[" + root.mashDebugStrategies.join(",") + "]"
@@ -1373,7 +1374,8 @@ Item {
       + '.. " carry_ms=" .. tostring(m.carry_ms or "") '
       + '.. " labels=" .. table.concat(t, ",") '
       + '.. " mash_strategy=" .. tostring(m.mash_strategy or "") '
-      + '.. " mash_debug_strategies=" .. tostring(m.mash_debug_strategies or "")']
+      + '.. " mash_debug_strategies=" .. tostring(m.mash_debug_strategies or "") '
+      + '.. " mash_gain=" .. tostring(m.mash_gain or "")']
     stdout: StdioCollector {
       // "fast_tap_ms=135 carry_ms=135" — named pairs so adding a knob is one term
       // here and one in bindings.lua, and a missing one just keeps its default.
@@ -1402,6 +1404,14 @@ Item {
               if (ab.length === 2) lm[ab[0]] = ab[1]
             }
             root.mashLabels = lm
+            continue
+          }
+          if (kv[0] === "mash_gain") {
+            var g = parseFloat(kv[1])
+            if (g > 0 && g !== root.mashGain) {
+              root.mashGain = g
+              root.log("mashGain <- " + g + " (bindings.lua)")
+            }
             continue
           }
           var v = parseInt(kv[1], 10)

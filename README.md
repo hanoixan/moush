@@ -175,10 +175,17 @@ moves the cursor by the `mashStepPx` floor and nothing more.
 
 ```lua
 MOUSEKEYS = {
-  mash_strategy = "cpa",                        -- steers the pointer
+  mash_strategy = "lsq",                        -- steers the pointer
+  mash_gain = 0.30,                             -- how hard each press shoves it
   mash_debug_strategies = "cpa,lsq,pca,ewma",   -- also drawn, for comparison
 }
 ```
+
+`mash_gain` is the one dial worth reaching for when mash feels too eager or too
+sluggish: the impulse is `mash_gain * speed^3`, so a press carries
+`mash_gain * speed^3 / 3` pixels once friction has run out. Being cubic, a change
+here is felt hardest at the fast end — halving it barely alters a slow nudge but
+takes a long way off a burst.
 
 An unrecognised name is ignored rather than breaking the mode. Measured on the
 same four-press run across a row, they land within about 12% of each other
@@ -205,9 +212,24 @@ cluster are averaged, weighted by length, into one drive vector,
 so longer hops count for more and a mash that reverses cancels itself out.
 
 **The ball.** Each press adds an impulse along the drive direction and friction
-bleeds it away: `v += u·gain·speed^mashExp`, then `v *= e^(-friction·dt)`. Total
-distance from one impulse is `v/friction`, so friction sets how long a throw
-lasts without changing how far it goes — the gain decides that. The exponent is
+bleeds it away: `v += u·mash_gain·speed³`, then `v *= e^(-friction·dt)`, capped at
+`mashVMax`. Total distance from one impulse is `v/friction`, so friction sets how
+long a throw lasts without changing how far it goes — the gain decides that.
+
+Direction passes through unscaled. Both grid axes are in key widths, so a 45° mash
+gives 45° on screen with no aspect correction: crossing the wider screen dimension
+takes correspondingly more mashing.
+
+Measured on four-press runs, the impulse tracks the cube of the mash rate and runs
+a little steeper still, because faster presses also decay less between each other:
+
+```
+gap    speed      predicted s^3   measured ball
+ 60ms  16.7 kw/s         27.0x           40.7x
+ 90ms  11.1 kw/s          8.0x           11.6x
+130ms   7.7 kw/s          2.7x            3.1x
+180ms   5.6 kw/s          1.0x            1.0x
+``` The exponent is
 steep because the two ends of the scale are far apart: a press at two per second
 should nudge a single pixel, a four-press burst should cross the screen.
 

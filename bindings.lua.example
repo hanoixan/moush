@@ -1,16 +1,16 @@
--- Mouse keys: Super + Left Alt enters. A short press starts the session when
--- the chord is released and it exits after 2s idle; holding the chord past
--- 500ms starts it right then and latches until the chord is hit again.
+-- Mouse keys: SUPER + M enters. A short press starts the session when the chord
+-- is released and it exits after 2s idle; holding it past 500ms starts the
+-- session right then and latches until you hit SUPER + M again.
 -- Three keymaps, cycled with Tab (the choice persists):
 --            move       buttons L/M/R   scroll up/down
 --   left     i j k l      c  x  z         y    h
 --   right    w a s d      ,  .  /         r    f
 --   arrows   arrows       d  s  a         PgUp PgDn
---   submap_universal keeps these live inside the plugin's own submap
-hl.bind("SUPER + Alt_L", hl.dsp.global("mousekeys:toggle-alt"),
-  { non_consuming = true, submap_universal = true, description = "Mouse keys" })
-hl.bind("ALT + Super_L", hl.dsp.global("mousekeys:toggle-super"),
-  { non_consuming = true, submap_universal = true, description = "Mouse keys" })
+-- submap_universal keeps this live inside the plugin's own submap, so the same
+-- chord exits. M is one of the few SUPER combinations Omarchy leaves free, and
+-- it is not one of the keys the plugin binds in-session.
+hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
+  { submap_universal = true, description = "Mouse keys" })
 
 -- This submap IS the plugin's input mechanism, not merely a shield. The overlay
 -- takes no keyboard focus, because a layer surface with exclusive focus makes

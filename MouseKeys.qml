@@ -6,7 +6,7 @@ import Quickshell.Wayland
 
 // Mouse Keys — drive the pointer from the keyboard.
 //
-// Super + Left Alt enters. How long you hold the chord decides both when the
+// Super + M enters. How long you hold the chord decides both when the
 // session starts and how long it lasts:
 //   short press   starts on the chord's RELEASE; exits after idleMs idle
 //   long press    starts the moment chordLongPressMs elapses, chord still
@@ -88,8 +88,6 @@ Item {
 
   // Chord keys. Super is only ever the chord; Left Alt is too, and since no
   // button is a modifier any more it has no second meaning to disambiguate.
-  readonly property var superKeys: [125, 126]
-  readonly property int keyLAlt: 56
 
   // ---- persisted setting ------------------------------------------------------
   property string keymap: "arrows"
@@ -575,19 +573,12 @@ Item {
   // final key completes it.
   GlobalShortcut {
     appid: "mousekeys"
-    name: "toggle-alt"
-    description: "Mouse keys (Super, then Left Alt)"
+    name: "toggle"
+    description: "Mouse keys (Super + M)"
     onPressed: root.chordPressed()
     onReleased: root.chordReleased()
   }
 
-  GlobalShortcut {
-    appid: "mousekeys"
-    name: "toggle-super"
-    description: "Mouse keys (Left Alt, then Super)"
-    onPressed: root.chordPressed()
-    onReleased: root.chordReleased()
-  }
 
   // ---- helpers -----------------------------------------------------------------------------
   FileView {
@@ -718,8 +709,8 @@ Item {
   Process {
     id: chordProbe
     command: ["hyprctl", "repl",
-      "return tostring((hl.is_key_down(\"Alt_L\") and (hl.is_key_down(\"Super_L\")"
-      + " or hl.is_key_down(\"Super_R\"))) or false)"]
+      "return tostring((((hl.is_key_down(\"m\") or hl.is_key_down(\"M\")))"
+      + " and (hl.is_key_down(\"Super_L\") or hl.is_key_down(\"Super_R\"))) or false)"]
     stdout: StdioCollector {
       // Still down: keep waiting for either the release or the latch timer.
       // Up: that was a short press, so start now with the idle deadline.

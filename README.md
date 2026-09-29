@@ -2,7 +2,7 @@
 
 Drive the pointer from the keyboard: move, click and scroll without a mouse.
 
-## Entry — Super + Left Alt
+## Entry — Super + M
 
 How long you hold the chord decides **both** when the session starts and how
 long it lasts:
@@ -10,7 +10,7 @@ long it lasts:
 | Gesture | Starts | Lasts |
 |---------|--------|-------|
 | **Short press** (chord tapped) | when the chord is **released** | until `idleMs` (2s) passes with no input |
-| **Long press** (held past `chordLongPressMs`, 500ms) | the moment 500ms elapses, **chord still down** | latched — until you hit Super + Left Alt again |
+| **Long press** (held past `chordLongPressMs`, 500ms) | the moment 500ms elapses, **chord still down** | latched — until you hit Super + M again |
 
 Hitting the chord again always exits. While the chord is down and neither has
 happened yet, the session is *armed but inert*: keys do nothing, no marker.
@@ -305,18 +305,36 @@ Saving files under `~/.config/omarchy/plugins/` hot-reloads most edits, but a
 `keepLoaded` plugin like this one keeps its mounted instance — run
 `omarchy-restart-shell` to pick up QML changes.
 
-A latched session has no timeout and no Escape, so **Super + Left Alt is its
-only exit**. `CTRL + ALT + Escape` restores your keybindings if the shell dies
+A latched session has no timeout and no Escape, so **Super + M is its only
+exit**. `CTRL + ALT + Escape` restores your keybindings if the shell dies
 holding the submap, but the overlay keeps its surface until
 `omarchy-shell shell hide mousekeys`.
 
-## Known conflict
+## Choosing the chord
 
-`SUPER+ALT` carries 25 Omarchy bindings. Pressing Super then Left Alt en route
-to `SUPER+ALT+SPACE` (Apps menu), `SUPER+ALT+RETURN` (Tmux) or `SUPER+ALT+F`
-(Full width) arms this plugin instead, and the submap swallows the third key.
+`SUPER + M` is deliberate: Omarchy leaves it unbound, and `M` is not one of the
+keys the plugin binds in-session. Both halves matter.
 
-This is largely self-limiting: a real `SUPER+ALT+<key>` is pressed quickly, so
-it registers as a **short** press and the session closes itself 2s later. You
-lose the keystroke, not your session. Hitting Super + Left Alt again exits
-immediately.
+The earlier chord was `SUPER + Left Alt`, which collided with the 25 `SUPER+ALT`
+bindings Omarchy ships — reaching for `SUPER+ALT+SPACE` armed the plugin instead
+and the submap swallowed the third key.
+
+If you want to move it, two traps are worth knowing:
+
+- **Omarchy binds some `SUPER` combinations by raw keycode**, and
+  `hyprctl binds` reports those with an *empty* key name. `SUPER+1`…`SUPER+0`
+  (workspaces, `code:10`–`code:19`) and `SUPER+minus`/`SUPER+equal` (window
+  resize, `code:20`/`code:21`) therefore look free to a name-based scan and are
+  not. Of 43 taken `SUPER+<key>` combinations, 12 are invisible that way.
+- **The chord key must not be one of the plugin's in-session keys.** Those are
+  bound with `ignore_mods`, so they fire whatever modifiers are held — a chord on
+  one of them would move the cursor or click while exiting. That rules out
+  `A D H I R Y Z period Prior Next`, which are otherwise free.
+
+What that leaves: letters `B E M N Q U`, punctuation `semicolon apostrophe
+bracketleft bracketright grave backslash`, and `DELETE END INSERT F1`–`F12`.
+
+`SUPER + Caps_Lock` also works, but **only bound by keycode as `code:66`**:
+Omarchy sets `kb_options = "compose:caps"`, so the physical key emits
+`Multi_key`, not `Caps_Lock`. A keysym bind registers and silently never fires,
+and the release poll would have to query `"Multi_key"`.

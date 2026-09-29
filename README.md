@@ -178,6 +178,41 @@ exists, yields a *direction* only — its length is a distance in key widths, an
 feeding that to a formula expecting key widths per second throws the ball at an
 arbitrary speed.
 
+#### Seeing what mash is thinking
+
+While mash is the active keymap, a debug display sits in the upper left. It is on
+by default and **backtick** toggles it.
+
+```
+- subvector  - drive  - ignored          legend, in the colours below
+
+  7  8  9  0  -                          the grid as it sits under your hand;
+ Y  U  I  O  P  [                        a key brightens when struck
+ H  J  K  L  ;  '                        and fades back over 3s
+  N  M  ,  .  /
+
+        \|/                              vectors, drawn from the grid centre
+         *                               because they are directions, not places
+```
+
+Yellow is a subvector that steers the ball, green the drive vector they average
+to, red a fit that was rejected and contributed nothing. Hits and vectors fade
+over `dbgFadeMs` (3s), so the trace of a gesture stays readable just after it
+ends.
+
+The red is the reason this is worth having. A reversal — `L K L`, say — fits to
+an axis with *exactly no motion along it*, so it steers nothing. Without the
+display that is invisible: the ball simply does not respond and there is nothing
+to look at. It also caught a real bug. Such a fit comes back as `1e-15` rather
+than `0`, which passed a bare `v > 0` and was recorded as a valid contribution
+that happened to move nothing — visible in the display as a vector that was
+never drawn, because its length was zero. Hence `mashMinSpeed`: a fit has to
+carry real speed to count, and anything below it is drawn red and ignored.
+
+The key names come from `bindings.lua`, which publishes the grid's labels next to
+the keys themselves, so a re-measured grid labels itself correctly with no change
+here.
+
 ### Speed model — hold duration sets speed
 
 Both movement and scrolling run off one model. `h` is how long the current

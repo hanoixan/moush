@@ -74,6 +74,19 @@ Item {
   readonly property real mashFriction: 3.0    // e-folds per second of rolling decay
   readonly property real mashGain: 0.53       // impulse per (key-width/s)^mashExp
   readonly property real mashStepPx: 1        // every press moves at least this far
+  // A fit has to carry real speed to count. Zero is not a rounding error here: a
+  // straight reversal (L K L) fits to an axis with exactly no motion along it, and
+  // comes out as ~1e-15 rather than 0, which would pass a bare "> 0" and be taken
+  // as a valid contribution that happens to move nothing.
+  readonly property real mashMinSpeed: 0.05   // key-widths/s below this is degenerate
+  readonly property int dbgFadeMs: 3000       // hits and vectors fade away over this
+  readonly property real dbgPitch: 26         // px between grid cells
+  readonly property real dbgScale: 4          // px drawn per key-width/second
+  readonly property real dbgMaxLen: 70        // ...but never longer than this
+  readonly property real dbgDeadLen: 26       // degenerate vectors have no speed to scale
+  readonly property var dbgGlyphs: ({ bracketleft: "[", bracketright: "]",
+                                      apostrophe: "'", semicolon: ";", comma: ",",
+                                      period: ".", slash: "/", minus: "-", grave: "`" })
   readonly property real mashExp: 3.0         // maps mash rate to impulse, see README
   readonly property real mashVMax: 8000       // px/s ceiling so a long mash cannot run away
   readonly property real mashScrollPx: 90     // px of ball travel per wheel detent
@@ -111,7 +124,7 @@ Item {
   readonly property var actions: ["up", "down", "left", "right",
                                   "lmb", "mmb", "rmb",
                                   "scrollup", "scrolldown", "cycle",
-                                  "noop", "wheel"].concat(root.mashActions)
+                                  "noop", "wheel", "debug"].concat(root.mashActions)
   readonly property var actionDirs: ({ "up": [0, -1], "down": [0, 1],
                                        "left": [-1, 0], "right": [1, 0] })
 
@@ -221,6 +234,14 @@ Item {
   property bool wheelHeld: false
   property real scrollAcc: 0
   property real mashLastAt: 0
+  property bool mashDebug: true               // the grid overlay; backtick toggles it
+  property var mashLabels: ({})                // action -> key name, from bindings.lua
+  property var dbgHits: []                    // {name, t} of recent presses
+  property var dbgVecs: []                    // {x, y, t, ok} subvectors, red when !ok
+  property real dbgDriveX: 0
+  property real dbgDriveY: 0
+  property real dbgDriveAt: 0
+  property real dbgLastAt: 0                  // newest of the above, for the fade clock
   property int mashCount: 0                   // diagnostic: presses mashPress() saw
   property string mashLog: ""                 // diagnostic: recent grid actions
   // Diagnostics for the carry decision: the gap the last fresh move press saw,
@@ -257,6 +278,12 @@ Item {
       + " keysDown=" + (root.keysDown === "" ? "none" : root.keysDown.replace(/ /g, ","))
       + " ball=" + root.ballVX.toFixed(0) + "," + root.ballVY.toFixed(0)
       + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
+      + " dbg=" + root.mashDebug + " labels=" + Object.keys(root.mashLabels).length
+      + " dbgVecs=" + (function () {
+          var ok = 0
+          for (var i = 0; i < root.dbgVecs.length; i++) if (root.dbgVecs[i].ok) ok++
+          return ok + "ok/" + (root.dbgVecs.length - ok) + "dead"
+        })() + " dbgHits=" + root.dbgHits.length
       + " mashN=" + root.mashCount + " histN=" + root.mashHist.length
       + " mashLog=[" + root.mashLog.trim() + "]"
   }
@@ -293,6 +320,8 @@ Item {
     keysPoll.stop()
     wheelPoll.stop()
     root.mashStop()
+    root.dbgHits = []; root.dbgVecs = []; root.dbgDriveAt = 0
+    dbgTimer.stop()
     root.prevGap = Infinity
     root.lastActionAt = 0
     root.holdH = 0
@@ -774,9 +803,17 @@ Item {
   //
   // maximise (a.u)(b.u) = u' M u for M = (ab' + ba')/2, so u is M's principal
   // eigenvector — in 2D that is one atan2, no iteration.
+  // Always returns something: a fit that contributes nothing comes back with
+  // ok = false rather than as null, so the debug display can show it in red
+  // instead of it vanishing silently. Only ok fits steer the ball.
   function mashSubvector(p1, p2, p3) {
     var dt1 = (p2.t - p1.t) / 1000, dt2 = (p3.t - p2.t) / 1000
-    if (!(dt1 > 0) || !(dt2 > 0)) return null
+    // A rejected fit still wants a direction to draw; the span of the triple is
+    // the only one left when the timing itself is what went wrong.
+    var sx = p3.x - p1.x, sy = p3.y - p1.y
+    var sm = Math.sqrt(sx * sx + sy * sy)
+    var dead = ({ x: sm > 0 ? sx / sm : 0, y: sm > 0 ? sy / sm : 0, t: p3.t, ok: false })
+    if (!(dt1 > 0) || !(dt2 > 0)) return dead          // struck together, no velocity
     var ax = (p2.x - p1.x) / dt1, ay = (p2.y - p1.y) / dt1
     var bx = (p3.x - p2.x) / dt2, by = (p3.y - p2.y) / dt2
     var m11 = ax * bx, m22 = ay * by, m12 = (ax * by + ay * bx) / 2
@@ -786,8 +823,32 @@ Item {
     // Speed along that axis: the average of the velocities between successive
     // closest points of approach, which is what projecting onto u gives.
     var v = ((ax * ux + ay * uy) + (bx * ux + by * uy)) / 2
-    if (!(v > 0)) return null
-    return ({ x: ux * v, y: uy * v, t: p3.t })
+    if (!(v > root.mashMinSpeed)) { dead.x = ux; dead.y = uy; return dead }   // reversal or restrike
+    return ({ x: ux * v, y: uy * v, t: p3.t, ok: true })
+  }
+
+  function dbgPrune(list, now) {
+    var keep = []
+    for (var i = 0; i < list.length; i++)
+      if (now - list[i].t <= root.dbgFadeMs) keep.push(list[i])
+    return keep
+  }
+
+  // 1 right after a press, 0 once it has faded out.
+  function dbgAlpha(t, now) {
+    if (!(t > 0)) return 0
+    var a = 1 - (now - t) / root.dbgFadeMs
+    return a < 0 ? 0 : (a > 1 ? 1 : a)
+  }
+
+  function dbgRgba(r, g, b, a) {
+    return "rgba(" + r + "," + g + "," + b + "," + a.toFixed(2) + ")"
+  }
+
+  function dbgGlyph(k) {
+    if (!k) return ""
+    if (root.dbgGlyphs[k]) return root.dbgGlyphs[k]
+    return k.length === 1 ? k : k.charAt(0)
   }
 
   // Magnitude-weighted mean of the subvectors still inside the window: longer
@@ -820,12 +881,17 @@ Item {
     var hist = root.mashHist.concat([{ x: pos.x, y: pos.y, t: now }])
     if (hist.length > 3) hist = hist.slice(hist.length - 3)
     root.mashHist = hist
+    root.dbgHits = root.dbgPrune(root.dbgHits, now).concat([{ name: name, t: now }])
+    root.dbgLastAt = now
     if (hist.length === 3) {
       var sv = root.mashSubvector(hist[0], hist[1], hist[2])
-      if (sv) root.mashSubs = root.mashSubs.concat([sv])
+      root.dbgVecs = root.dbgPrune(root.dbgVecs, now).concat([sv])
+      if (sv.ok) root.mashSubs = root.mashSubs.concat([sv])
     }
+    if (root.mashDebug) dbgTimer.start()
     var drive = root.mashDrive(now)
     var s = drive ? Math.sqrt(drive.x * drive.x + drive.y * drive.y) : 0
+    if (drive) { root.dbgDriveX = drive.x; root.dbgDriveY = drive.y; root.dbgDriveAt = now }
     var ux = 0, uy = 0
     if (s > 0) {
       ux = drive.x / s; uy = drive.y / s
@@ -974,6 +1040,15 @@ Item {
     root.lastActionAt = now
     root.lastAction = name
 
+    if (name === "debug") {
+      if (!repeat) {
+        root.mashDebug = !root.mashDebug
+        root.pokeIdle()
+        if (root.mashDebug) dbgTimer.start()
+        root.log("debug display " + (root.mashDebug ? "on" : "off"))
+      }
+      return
+    }
     if (name === "noop") return          // a stray key in mash mode, deliberately inert
     if (name === "wheel") {
       // w has no dependable release either, so it is asked about rather than
@@ -1096,8 +1171,12 @@ Item {
   Process {
     id: luaConf
     command: ["hyprctl", "repl",
-      'local m = MOUSEKEYS or {} return "fast_tap_ms=" .. tostring(m.fast_tap_ms or "")'
-      + ' .. " carry_ms=" .. tostring(m.carry_ms or "")']
+      'local m = MOUSEKEYS or {} '
+      + 'local L = ((m.keys or {}).mash or {}).labels or {} '
+      + 'local t = {} for a, k in pairs(L) do t[#t+1] = a .. ":" .. k end '
+      + 'return "fast_tap_ms=" .. tostring(m.fast_tap_ms or "") '
+      + '.. " carry_ms=" .. tostring(m.carry_ms or "") '
+      + '.. " labels=" .. table.concat(t, ",")']
     stdout: StdioCollector {
       // "fast_tap_ms=135 carry_ms=135" — named pairs so adding a knob is one term
       // here and one in bindings.lua, and a missing one just keeps its default.
@@ -1106,6 +1185,16 @@ Item {
         for (var i = 0; i < parts.length; i++) {
           var kv = parts[i].split("=")
           if (kv.length !== 2) continue
+          if (kv[0] === "labels") {
+            var lm = ({})
+            var lp = kv[1].split(",")
+            for (var j = 0; j < lp.length; j++) {
+              var ab = lp[j].split(":")
+              if (ab.length === 2) lm[ab[0]] = ab[1]
+            }
+            root.mashLabels = lm
+            continue
+          }
           var v = parseInt(kv[1], 10)
           if (!(v > 0)) continue
           if (kv[0] === "fast_tap_ms" && v !== root.fastTapMs) {
@@ -1123,6 +1212,18 @@ Item {
   // Rolling under friction. Distance from a single impulse is v/friction, so the
   // friction constant sets how long a throw takes without changing how far it
   // goes — the gain above decides that.
+  Timer {
+    id: dbgTimer
+    interval: 50
+    repeat: true
+    onTriggered: {
+      dbgCanvas.requestPaint()
+      // One pass after the last thing has faded leaves the grid drawn dim, and
+      // then there is nothing left to animate.
+      if (Date.now() - root.dbgLastAt > root.dbgFadeMs + 100) dbgTimer.stop()
+    }
+  }
+
   Timer {
     id: ballTimer
     interval: root.motionTickMs
@@ -1395,6 +1496,91 @@ Item {
     // inject (Exclusive) or stops delivering keys after the first one
     // (OnDemand). Keys arrive as action shortcuts from the submap binds.
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+
+    // What mash is thinking: the grid as it sits under your hand, which keys were
+    // just struck, and the vectors being fitted from them. Yellow subvectors steer
+    // the ball, red ones were rejected and contribute nothing, green is the drive
+    // vector they average to. Everything fades over dbgFadeMs so the trace of a
+    // gesture stays readable for a moment after it ends.
+    Canvas {
+      id: dbgCanvas
+      visible: root.active && root.keymap === "mash" && root.mashDebug
+      x: 32
+      y: 44
+      width: root.dbgPitch * 5 + 2 * root.dbgMaxLen
+      height: root.dbgPitch * 3 + 2 * root.dbgMaxLen
+      onVisibleChanged: if (visible) { requestPaint(); dbgTimer.start() }
+      onPaint: {
+        var ctx = getContext("2d")
+        ctx.reset()
+        var now = Date.now()
+        var pad = root.dbgMaxLen, pitch = root.dbgPitch
+        ctx.fillStyle = root.dbgRgba(0, 0, 0, 0.9)
+        ctx.fillRect(0, 0, dbgCanvas.width, dbgCanvas.height)
+        ctx.strokeStyle = root.dbgRgba(255, 255, 255, 0.18)
+        ctx.lineWidth = 1
+        ctx.strokeRect(0.5, 0.5, dbgCanvas.width - 1, dbgCanvas.height - 1)
+
+        // Legend, so the colours do not have to be remembered.
+        ctx.font = "10px monospace"
+        ctx.textBaseline = "top"
+        ctx.textAlign = "left"
+        var lx = 8
+        var legend = [["subvector", 255, 214, 0], ["drive", 64, 255, 128],
+                      ["ignored", 255, 72, 72]]
+        for (var g = 0; g < legend.length; g++) {
+          ctx.fillStyle = root.dbgRgba(legend[g][1], legend[g][2], legend[g][3], 0.95)
+          ctx.fillRect(lx, 9, 8, 2)
+          ctx.fillText(legend[g][0], lx + 12, 5)
+          lx += 20 + legend[g][0].length * 6
+        }
+
+        // Vectors all radiate from the middle of the grid: they are directions,
+        // not places, so a common origin makes them comparable at a glance.
+        var ox = pad + 2.5 * pitch, oy = pad + 1.5 * pitch
+        function arrow(vx, vy, col, alpha, len) {
+          var m = Math.sqrt(vx * vx + vy * vy)
+          if (!(m > 0) || alpha <= 0) return
+          var L = Math.min(len, root.dbgMaxLen)
+          var ex = ox + (vx / m) * L, ey = oy + (vy / m) * L
+          ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 2
+          ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ex, ey); ctx.stroke()
+          ctx.beginPath(); ctx.arc(ex, ey, 3, 0, 2 * Math.PI); ctx.fill()
+        }
+
+        for (var i = 0; i < root.dbgVecs.length; i++) {
+          var sv = root.dbgVecs[i]
+          var a = root.dbgAlpha(sv.t, now)
+          var mag = Math.sqrt(sv.x * sv.x + sv.y * sv.y)
+          arrow(sv.x, sv.y,
+                sv.ok ? root.dbgRgba(255, 214, 0, a) : root.dbgRgba(255, 72, 72, a),
+                a, sv.ok ? mag * root.dbgScale : root.dbgDeadLen)
+        }
+        var dm = Math.sqrt(root.dbgDriveX * root.dbgDriveX + root.dbgDriveY * root.dbgDriveY)
+        var da = root.dbgAlpha(root.dbgDriveAt, now)
+        arrow(root.dbgDriveX, root.dbgDriveY, root.dbgRgba(64, 255, 128, da), da,
+              dm * root.dbgScale)
+
+        // Keys last so they sit over the vector origin rather than under it.
+        ctx.textAlign = "center"
+        ctx.textBaseline = "middle"
+        for (var y = 0; y < root.mashCols.length; y++) {
+          for (var c = 0; c < root.mashCols[y].length; c++) {
+            var x2 = root.mashCols[y][c]
+            var nm = "m" + x2 + "_" + y
+            var hit = 0
+            for (var h = 0; h < root.dbgHits.length; h++)
+              if (root.dbgHits[h].name === nm && root.dbgHits[h].t > hit) hit = root.dbgHits[h].t
+            var ha = root.dbgAlpha(hit, now)
+            var px = pad + (x2 / 2) * pitch, py = pad + y * pitch
+            ctx.fillStyle = root.dbgRgba(255, 255, 255, 0.20 + 0.75 * ha)
+            ctx.beginPath(); ctx.arc(px, py, 9, 0, 2 * Math.PI); ctx.fill()
+            ctx.fillStyle = root.dbgRgba(0, 0, 0, 0.55 + 0.40 * ha)
+            ctx.fillText(root.dbgGlyph(root.mashLabels[nm]), px, py + 0.5)
+          }
+        }
+      }
+    }
 
     // Hyprland hides the real pointer on key press (cursor:hide_on_key_press),
     // so without this marker there is nothing to aim with.

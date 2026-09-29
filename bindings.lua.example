@@ -90,11 +90,13 @@ local mash_null = { "5", "6", "R", "T", "F", "G", "V", "B" }
 
 local function mousekeys_mash()
   MOUSEKEYS.keys = MOUSEKEYS.keys or {}
-  MOUSEKEYS.keys.mash = { wheel = "W" }        -- the plugin polls this one
+  MOUSEKEYS.keys.mash = { wheel = "W", labels = {} }   -- wheel is polled; labels
+  local labels = MOUSEKEYS.keys.mash.labels             -- name the debug display's cells
   hl.define_submap("mousekeys-mash", function()
     hl.bind("CTRL + ALT + Escape", hl.dsp.submap("reset"))
     for _, row in ipairs(mash_grid) do
       for key, x2 in pairs(row.keys) do
+        labels["m" .. x2 .. "_" .. row.y] = key
         -- Not repeating: a held key would restrike the same point forever, and
         -- only key-down is meant to steer the ball.
         hl.bind(key, hl.dsp.global("mousekeys:m" .. x2 .. "_" .. row.y), { ignore_mods = true })
@@ -108,6 +110,7 @@ local function mousekeys_mash()
     hl.bind("D", hl.dsp.global("mousekeys:lmb"), { ignore_mods = true })
     hl.bind("W", hl.dsp.global("mousekeys:wheel"), { repeating = true, ignore_mods = true })
     hl.bind("TAB", hl.dsp.global("mousekeys:cycle"), { ignore_mods = true })
+    hl.bind("grave", hl.dsp.global("mousekeys:debug"), { ignore_mods = true })
   end)
 end
 mousekeys_mash()

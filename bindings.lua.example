@@ -1,0 +1,40 @@
+-- Mouse keys: Super + Left Alt enters. A short press starts the session when
+-- the chord is released and it exits after 2s idle; holding the chord past
+-- 500ms starts it right then and latches until the chord is hit again.
+-- Three keymaps, cycled with Tab (the choice persists):
+--            move       buttons L/M/R   scroll up/down
+--   left     i j k l      c  x  z         y    h
+--   right    w a s d      ,  .  /         r    f
+--   arrows   arrows       d  s  a         PgUp PgDn
+--   submap_universal keeps these live inside the plugin's own submap
+hl.bind("SUPER + Alt_L", hl.dsp.global("mousekeys:toggle-alt"),
+  { non_consuming = true, submap_universal = true, description = "Mouse keys" })
+hl.bind("ALT + Super_L", hl.dsp.global("mousekeys:toggle-super"),
+  { non_consuming = true, submap_universal = true, description = "Mouse keys" })
+
+-- This submap IS the plugin's input mechanism, not merely a shield. The overlay
+-- takes no keyboard focus, because a layer surface with exclusive focus makes
+-- Hyprland swallow every click the plugin injects, and with OnDemand focus it
+-- receives only one key event per session. Movement rides key repeat; see below.
+hl.define_submap("mousekeys", function()
+  hl.bind("CTRL + ALT + Escape", hl.dsp.submap("reset"))  -- emergency exit
+
+  -- Movement and scroll keys repeat: the plugin rides Hyprland's key repeat
+  -- instead of waiting for a release, because a `release = true` bind never
+  -- fires when it dispatches hl.dsp.global.
+  -- ignore_mods so one bind per key matches whatever modifiers are held. That
+  -- matters twice over: the key still reaches the plugin instead of falling
+  -- through and typing a character, and the modifiers you are holding ride along
+  -- on the pointer events the plugin injects — so Shift+scroll is horizontal and
+  -- Ctrl+scroll zooms, in whatever app is underneath.
+  for _, k in ipairs({ "I", "J", "K", "L", "Y", "H",
+                       "W", "A", "S", "D", "R", "F",
+                       "UP", "DOWN", "LEFT", "RIGHT", "Prior", "Next" }) do
+    hl.bind(k, hl.dsp.global("mousekeys:k" .. k), { repeating = true, ignore_mods = true })
+  end
+
+  -- Buttons and the keymap switch fire once per press.
+  for _, k in ipairs({ "C", "X", "Z", "comma", "period", "slash", "TAB" }) do
+    hl.bind(k, hl.dsp.global("mousekeys:k" .. k), { ignore_mods = true })
+  end
+end)

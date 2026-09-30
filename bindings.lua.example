@@ -213,7 +213,11 @@ end
 
 local function mousekeys_mash()
   MOUSEKEYS.keys = MOUSEKEYS.keys or {}
+  -- The arrows are live in mash too, so the plugin needs their keysyms here for
+  -- the same reason the other keymaps publish theirs: when two are held, repeats
+  -- stop and only is_key_down can say which is still down.
   MOUSEKEYS.keys.mash = { wheel = "W", labels = {},    -- wheel is polled; labels
+                          up = "UP", down = "DOWN", left = "LEFT", right = "RIGHT",
                           inner = mash_ring(mash_inner), outer = mash_ring(mash_outer) }
   local labels = MOUSEKEYS.keys.mash.labels             -- name the debug display's cells
   hl.define_submap("mousekeys-mash", function()
@@ -235,6 +239,12 @@ local function mousekeys_mash()
     mousekeys_bind("S", hl.dsp.global("mousekeys:mmb"), {})
     mousekeys_bind("D", hl.dsp.global("mousekeys:lmb"), {})
     mousekeys_bind("W", hl.dsp.global("mousekeys:wheel"), { repeating = true, })
+    -- Cartesian control alongside the trackball: the arrows keep their own model
+    -- here, acceleration, edge snapping and double-tap skitter included, for the
+    -- moves mashing is clumsy at.
+    for action, key in pairs({ up = "UP", down = "DOWN", left = "LEFT", right = "RIGHT" }) do
+      mousekeys_bind(key, hl.dsp.global("mousekeys:" .. action), { repeating = true })
+    end
     mousekeys_bind("TAB", hl.dsp.global("mousekeys:cycle"), {})
     mousekeys_bind("grave", hl.dsp.global("mousekeys:debug"), {})
     -- Cycles which strategy steers, among those the debug view is drawing, so the

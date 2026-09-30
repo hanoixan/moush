@@ -147,6 +147,9 @@ keys crossed     slow      medium     fast
 two                53px     149px     325px
 three              53px     262px     388px
 four              101px     372px     443px
+
+                 measured at mash_vmax 1000; the ceiling now ships at 3000,
+                 which lifts the fast end and leaves the slow end as it is
 ```
 
 So a short, unhurried swipe nudges the pointer a little way and a long, quick one
@@ -210,7 +213,7 @@ cyan once that passes `mash_vmax`**, which is then named beside it:
 
 ```
 drive:lsq   137 px/s                    within the ceiling, arrow green
-drive:lsq  2094 px/s   at vmax 1000     past it, arrow cyan
+drive:lsq  4200 px/s   at vmax 3000     past it, arrow cyan
 ```
 
 That is the point beyond which swiping harder changes nothing, so between them
@@ -308,7 +311,7 @@ Add another entry under `modes`. `Tab` cycles through them in alphabetical order
 
 ```lua
 mash_gain    = 1.0,    -- how hard each key press shoves the pointer
-mash_vmax    = 1000,   -- its top speed, which sets the longest roll
+mash_vmax    = 3000,   -- its top speed, which sets the longest roll
 mash_samples = 4,      -- how many recent presses the direction is read from
 ```
 

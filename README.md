@@ -138,7 +138,7 @@ Quartering keeps a column step and a row step the same distance, so the grid
 measures the way it feels under the hand rather than the way it is easiest to
 type out.
 
-**The fit sees the last `mash_samples` (5) presses.** Older ones drop out, so a
+**The fit sees the last `mash_samples` (3) presses.** Older ones drop out, so a
 long mash steers by what your hand is doing now rather than by an average over the
 whole gesture. `cpa` keeps three subvectors to match, since five events make three
 overlapping triples.
@@ -195,7 +195,7 @@ MOUSEKEYS = {
   mash_strategy = "lsq",                        -- steers the pointer
   mash_gain = 20,                               -- how hard each press shoves it
   mash_vmax = 1000,                             -- ceiling, and so the longest throw
-  mash_samples = 5,                             -- presses a fit may see
+  mash_samples = 3,                             -- presses a fit may see
   mash_debug_strategies = "cpa,lsq,pca,ewma",   -- also drawn, for comparison
 }
 ```

@@ -86,7 +86,7 @@ Item {
   // The fit sees at most this many of the most recent presses. Still clipped by
   // the cluster — a new gesture starts empty — so it is the last mashSamples
   // events *within* the current cluster, never a mix of two.
-  property int mashSamples: 5
+  property int mashSamples: 3
   readonly property var mashStrategies: ["cpa", "lsq", "net", "pca", "ewma"]
   readonly property real dbgPitch: 26         // px between grid cells
   readonly property real dbgScale: 4          // px drawn per key-width/second

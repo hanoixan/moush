@@ -144,14 +144,15 @@ trackball does. Measured across a row:
 ```
 keys crossed     slow      medium     fast
                  170ms     110ms      60ms
-two                31px      78px     264px
-three              61px     137px     388px
-four               90px     206px     446px
+two                53px     149px     325px
+three              53px     262px     388px
+four              101px     372px     443px
 ```
 
 So a short, unhurried swipe nudges the pointer a little way and a long, quick one
-throws it most of a screen, with everything in between available without thinking
-about it.
+carries it a few hundred pixels, with everything in between available without
+thinking about it. Raise `mash_vmax` if you want the fast end to reach further than
+that; it is the ceiling the quickest swipes are already pressing against.
 
 Keys struck more than about a fifth of a second apart are treated as separate taps
 rather than one gesture, which is what lets tapping and mashing share the same keys
@@ -292,7 +293,7 @@ Add another entry under `modes`. `Tab` cycles through them in alphabetical order
 ### How mashing feels
 
 ```lua
-mash_gain    = 0.5,    -- how hard each key press shoves the pointer
+mash_gain    = 1.0,    -- how hard each key press shoves the pointer
 mash_vmax    = 1000,   -- its top speed, which sets the longest roll
 mash_samples = 4,      -- how many recent presses the direction is read from
 ```
@@ -316,10 +317,11 @@ gain    slow     medium   fast     spread
  0.05     16px     41px     84px   5.2x   too short to cross a screen
 ```
 
-`0.5` is what ships, because it answers to how fast you swipe while still crossing
+`1.0` is what ships, because it answers to how fast you swipe while still crossing
 a useful distance at speed. Higher values trade that away: by `20` every swipe is
 past the cap before you have finished it, so they all travel the same distance and
-swiping harder changes nothing.
+swiping harder changes nothing. Lower values keep more of the range but ask for a
+faster hand to cross the screen.
 
 `mash_vmax` is the ceiling itself, and so the longest possible roll. Raise it along
 with the gain if you want the fast end to reach further.

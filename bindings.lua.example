@@ -7,7 +7,6 @@
 -- top level and any mode may override one by naming it.
 MOUSH = {
   -- ---- timing ------------------------------------------------------------
-  fast_tap_ms = 135,   -- re-press the same key quicker than this to double-tap
   carry_ms    = 175,   -- press a direction this soon after another to keep its speed
 
   -- ---- the trackball -----------------------------------------------------
@@ -95,7 +94,7 @@ function MOUSH_SETTINGS(mode)
   local out = {}
   local function put(k, v) out[#out + 1] = k .. "=" .. tostring(v == nil and "" or v) end
 
-  for _, k in ipairs({ "fast_tap_ms", "carry_ms", "mash_gain", "mash_vmax",
+  for _, k in ipairs({ "carry_ms", "mash_gain", "mash_vmax",
                        "mash_samples", "mash_strategy", "mash_debug_strategies",
                        "scroll_repeat_scale_min", "scroll_repeat_scale_max",
                        "scroll_repeat_scale_ultra", "scroll_increase_delay",

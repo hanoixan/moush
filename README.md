@@ -19,8 +19,8 @@ Moush gives you three ways to move, and you switch between them without thinking
   trackball, and the pointer rolls in the direction your hand travelled.
 
 On top of that, the pointer is magnetic to the edges of your windows. A single tap
-lands on an edge it would otherwise step past, and a quick double-tap jumps
-straight to the next edge, however far away it is. Most of the places you want to
+lands on an edge it would otherwise step past, and ending a swipe on a doubled key
+jumps straight to the next edge, however far away it is. Most of the places you want to
 click are at or near an edge, so getting there stops being the slow part.
 
 ## What you need
@@ -105,11 +105,22 @@ screen, a 1.5 second hold travelled 1475 pixels. Let go and tap to fine-tune.
 Letting go of one direction and pressing another keeps the speed you had built up,
 so you can steer a sweep instead of restarting it.
 
-**A quick double-tap jumps to the next edge.** Not a step, not a sweep: the pointer
-goes straight to the nearest window edge in that direction, however far. Tap the
-same key twice with roughly a tenth of a second between the taps. Taps closer together than
-about 55 milliseconds are read as one key being held down, so a deliberate
-double-tap works better than a frantic one.
+**Swipe, and strike the last key twice, to jump to the next edge.** Not a step and
+not a roll: the pointer goes straight to the nearest window edge in that direction,
+however far away. `J K K` jumps right, `M I I` jumps up, `O Y Y` jumps left.
+
+The direction is the swipe's own, so this does not depend on any key meaning an
+arrow. `Y O O` jumps right too, because `Y` to `O` points right. Any two keys that
+describe the direction you want will do, and the doubled key is what says "go all
+the way".
+
+Tapping one key over and over never does this, at any speed, which is the point of
+asking for two different keys: rapid tapping is just rapid tapping, and stays a
+series of steps. The whole gesture has to be one swipe, meaning no gap longer than
+about a fifth of a second between presses.
+
+Keep swiping onto more doubled keys and it keeps going. `J K K K K` walks right
+edge by edge.
 
 **Run out of edges and it crosses into the next window, and focuses it.** Walking
 left out of a window, the pointer stops on that window's left edge, then appears on
@@ -167,10 +178,10 @@ after 0.8s   1.0x      still steady
        7.5s  10.0x
 ```
 
-For a long document, double-tap a vertical key and keep it down on the second tap.
-Scrolling starts at a hundred times the base rate immediately and stays there until
-you let go. As with the jump-to-edge double-tap, a deliberate pace works; taps
-much faster than a tenth of a second do not register as a double-tap.
+For a long document, the same gesture works here: swipe up or down and hold the
+doubled key down at the end, as in `M I I`. Scrolling starts at a hundred times the
+base rate immediately and stays there until you let go. Sideways, the gesture goes
+to the end of the view instead.
 
 ## The display
 
@@ -195,8 +206,7 @@ Each layout declares its own keys, so the two can share nothing at all:
 
 ```lua
 MOUSH = {
-  fast_tap_ms = 135,   -- re-tap a key quicker than this to jump to an edge
-  carry_ms    = 175,   -- press a new direction this soon and keep your speed
+  carry_ms = 175,      -- press a new direction this soon and keep your speed
 
   modes = {
     mash = {
@@ -272,7 +282,7 @@ Lower it and speed starts to matter: at `0.01`, the same four presses travelled
 ```lua
 scroll_repeat_scale_min   = 1,    -- wheel notches per repeat to begin with
 scroll_repeat_scale_max   = 10,   -- and once it has finished speeding up
-scroll_repeat_scale_ultra = 100,  -- the double-tap-and-hold rate
+scroll_repeat_scale_ultra = 100,  -- the rate a doubled key held down asks for
 scroll_increase_delay     = 1.5,  -- seconds steady before it starts climbing
 scroll_increase_time      = 5,    -- seconds it takes to climb
 scroll_repeat_ms          = 60,   -- how often it repeats
@@ -283,13 +293,14 @@ milliseconds.
 
 ### Timings
 
-`fast_tap_ms` is the window for a double-tap. It must stay below your keyboard
-repeat delay, which on Omarchy is 250 ms, or the first auto-repeat of a held key
-would look like a deliberate second tap. Taps closer together than about 55 ms are
-read as a key being held rather than tapped twice.
-
 `carry_ms` is how long you have, after releasing one direction, to press another
 and keep the speed you had built up.
+
+What holds a swipe together is the gap between its presses: leave more than about a
+fifth of a second and it becomes two gestures rather than one. That single rule
+governs both mashing and the jump-to-edge gesture, so there is no separate
+double-tap window to tune, and nothing you can tap fast enough to trigger by
+accident.
 
 ### The entry chord
 

@@ -98,7 +98,6 @@ Item {
   // A mode may override any of these by naming it; the merge happens in Lua so it
   // is written once. Hyprland keeps its globals across config loads, so a
   // hyprctl reload is enough to apply a change: they are re-read every session.
-  property int fastTapMs: 135
   property int carryMs: 175
   property real mashGain: 20
   property real mashVMax: 1000
@@ -227,8 +226,7 @@ Item {
     }
     var n = parseFloat(v)
     if (!(n > 0)) return
-    if (k === "fast_tap_ms") root.fastTapMs = n
-    else if (k === "carry_ms") root.carryMs = n
+    if (k === "carry_ms") root.carryMs = n
     else if (k === "mash_gain") root.mashGain = n
     else if (k === "mash_vmax") root.mashVMax = n
     else if (k === "mash_samples") root.mashSamples = n
@@ -265,7 +263,6 @@ Item {
   property bool cursorKnown: false
   property real lastActionAt: 0               // telling a repeat from a fresh press
   property string lastAction: ""
-  property real prevGap: Infinity
   property var moveDir: [0, 0]
 
   // Speed model: v = k*holdH, where holdH is how long the current contiguous hold
@@ -300,6 +297,8 @@ Item {
 
   // Held in wheel mode, a direction key repeats and the repeats grow.
   property string scrollHoldName: ""
+  property string scrollProbeName: ""        // which key the in-flight probe asked about
+  property real scrollProbeAt: 0             // and when it was asked
   property real scrollHoldAt: 0
   property real scrollFrac: 0
   property bool scrollUltra: false
@@ -318,7 +317,7 @@ Item {
     return "opened=" + root.opened + " active=" + root.active + " sticky=" + root.sticky
       + " mode=" + root.mode + " modes=[" + root.modeNames.join(",") + "]"
       + " keys=" + Object.keys(root.mashPos).length
-      + " fastTap=" + root.fastTapMs + " carry=" + root.carryMs
+      + " carry=" + root.carryMs
       + " gain=" + root.mashGain + " vmax=" + root.mashVMax + " samples=" + root.mashSamples
       + " strategy=" + root.mashStrategy
       + " cur=" + Math.round(root.curX) + "," + Math.round(root.curY)
@@ -367,7 +366,6 @@ Item {
     root.screenX = scr.x; root.screenY = scr.y
     root.screenW = scr.width; root.screenH = scr.height
     root.lastAction = ""; root.lastHoldAction = ""
-    root.prevGap = Infinity
     root.lastActionAt = 0; root.lastDownAt = 0
     root.holdH = 0; root.holdConfirmed = false
     root.activeKind = ""
@@ -891,10 +889,73 @@ Item {
     root.moveStep(root.moveDir, root.fineHeld ? root.finePx : root.baseStep, false)
   }
 
-  function mashPress(name, now) {
-    var pos = root.gridPos(name)
-    if (!pos) return
+  // "Go to the next extent this way", asked for by swiping and striking the last
+  // key of the swipe twice: J K K, or Y O O, or M I I. The direction is the
+  // swipe's own, first point to last, so no key carries an arrow meaning here --
+  // Y O O goes right because Y to O points right.
+  //
+  // This replaces re-tapping one key quickly, which could not be told apart from
+  // simply tapping that key fast. Two distinct keys are required for exactly that
+  // reason: K K, however fast, is tapping, and stays tapping.
+  function extentDir(name, now) {
+    if (root.clusterN === 0 || now - root.mashLastAt > root.mashClusterMs) return null
+    var hits = root.dbgHits
+    if (hits.length < 2 || hits[hits.length - 1].name !== name) return null
+    var seen = ({}), distinct = 0
+    for (var i = 0; i < hits.length; i++)
+      if (!seen[hits[i].name]) { seen[hits[i].name] = 1; distinct++ }
+    if (distinct < 2) return null
+    var t = root.mashTrail
+    if (t.length < 2) return null
+    var dx = t[t.length - 1].x - t[0].x, dy = t[t.length - 1].y - t[0].y
+    var m = Math.sqrt(dx * dx + dy * dy)
+    if (!(m > 0)) return null
+    dx /= m; dy /= m
+    // Nearest of the eight, so a swipe that is a few degrees off still reads as the
+    // direction it was meant to be.
+    var best = null, bestDot = -2
+    for (var k in root.actionDirs) {
+      var v = root.actionDirs[k]
+      var vm = Math.sqrt(v[0] * v[0] + v[1] * v[1])
+      var dot = (dx * v[0] + dy * v[1]) / vm
+      if (dot > bestDot) { bestDot = dot; best = v }
+    }
+    return best
+  }
+
+  function takeExtent(name, dir, now) {
     root.pokeIdle()
+    // The jump replaces the roll rather than adding to it: whatever the swipe had
+    // already thrown would otherwise carry the pointer past the edge it just took.
+    root.ballVX = 0; root.ballVY = 0
+    ballTimer.stop()
+    root.mashLastAt = now      // keep the cluster alive so the gesture can repeat
+    root.dbgLogEvent(root.gridLabel(name), now, true)
+    if (root.mashDebug) dbgTimer.start()
+    if (root.wheelHeld) {
+      if (Math.abs(dir[1]) > Math.abs(dir[0])) {
+        root.scrollHoldName = name; root.scrollHoldAt = now
+        root.scrollFrac = 0; root.scrollReps = 0; root.scrollDets = 0
+        root.scrollUltra = true
+        root.scrollRepeat(name, dir, now)
+        scrollTimer.interval = root.scrollRepeatMs
+        scrollTimer.restart(); scrollKeyPoll.restart()
+        return
+      }
+      root.scrollPress(dir, true)          // sideways: to the end of the view
+      return
+    }
+    root.moveDir = dir
+    root.collectEdges()
+    root.moveStep(dir, root.fineHeld ? root.finePx : root.baseStep, true)
+  }
+
+  // Every grid press joins the cluster, whatever it then goes on to do. Scrolling
+  // used to skip this, which left wheel mode with no gesture history at all and so
+  // no way to recognise a swipe ending in a doubled key.
+  function mashRecord(name, now) {
+    var pos = root.gridPos(name)
+    if (!pos) return false
     // A gap ends the gesture. Everything the old cluster left behind goes with it,
     // including what the overlay is drawing: it shows one cluster at a time.
     if (now - root.mashLastAt > root.mashClusterMs) {
@@ -923,6 +984,13 @@ Item {
     }
     root.dbgStrats = ds
     if (root.mashDebug) dbgTimer.start()
+    return true
+  }
+
+  function mashPress(name, now) {
+    root.pokeIdle()
+    if (!root.mashRecord(name, now)) return
+    var hist = root.mashTrail
 
     var drive = root.mashCompute(root.mashStrategy, now)
     var s = drive ? Math.sqrt(drive.x * drive.x + drive.y * drive.y) : 0
@@ -931,10 +999,9 @@ Item {
     var n = hist.length
     // Nothing to fit yet: either this opened the cluster, or it landed on the same
     // key as last time and so added no displacement. Both mean the press stands
-    // alone. The same-key case is why tapping one direction key quickly used to
-    // stop moving: between fastTapMs and mashClusterMs the presses shared a
-    // cluster without being a double-tap, and a fit over no displacement produced
-    // nothing.
+    // alone. Striking the same key twice adds no displacement, so a repeated tap
+    // steps again rather than fitting to nothing -- and a doubled key that ends a
+    // real swipe never reaches here, having been taken as an extent gesture.
     if (n >= 2) {
       var dx = hist[n - 1].x - hist[n - 2].x, dy = hist[n - 1].y - hist[n - 2].y
       var m = Math.sqrt(dx * dx + dy * dy)
@@ -997,11 +1064,6 @@ Item {
     var same = (name === root.lastAction)
     var gap = same ? (now - root.lastActionAt) : Infinity
     var repeat = same && (gap <= root.repeatGapMs)
-    // Re-triggering the same action quicker than fastTapMs means "go all the way".
-    // The prevGap term rejects a repeat delayed under load, which lands in the same
-    // band and would otherwise teleport a sweeping cursor to an edge.
-    var fastTap = same && gap < root.fastTapMs && root.prevGap > root.repeatGapMs
-    root.prevGap = gap
     root.lastActionAt = now
     root.lastAction = name
 
@@ -1047,50 +1109,41 @@ Item {
     if (root.gridIndex(name) >= 0) {
       var dn = root.gridDir(name)
       var mdir = dn ? root.actionDirs[dn] : null
-      if (mdir && root.wheelHeld) {
-        // Wheel mode owns the direction keys outright: first press a detent, held a
-        // growing repeat, struck twice and kept down the top speed at once.
-        if (repeat) { root.scrollRepeat(name, mdir, now); return }
-        if (same && fastTap) {
-          if (Math.abs(mdir[1]) > Math.abs(mdir[0])) {
-            root.scrollHoldName = name; root.scrollHoldAt = now
-            root.scrollFrac = 0; root.scrollReps = 0; root.scrollDets = 0
-            root.scrollUltra = true
-            root.pokeIdle()
-            root.scrollRepeat(name, mdir, now)
-            scrollTimer.interval = root.scrollRepeatMs
-            scrollTimer.restart(); scrollKeyPoll.restart()
-            return
-          }
-          root.scrollPress(mdir, true)        // sideways keeps end-of-view
+
+      // A held key is not a new press, so repeats are settled before anything else
+      // looks at this press -- otherwise auto-repeat would re-fire the gesture.
+      if (repeat) {
+        if (root.wheelHeld && mdir) { root.scrollRepeat(name, mdir, now); return }
+        if (mdir && root.activeKind === "move") {
+          root.lastDownAt = now
+          root.confirmHold(now, root.repeatGapMs)
           return
         }
+        return
+      }
+
+      // A swipe whose last key is struck twice. Checked for every grid key, not
+      // just the ones that steer, since the direction comes from the swipe.
+      var ext = root.extentDir(name, now)
+      if (ext) { root.takeExtent(name, ext, now); return }
+
+      if (mdir && root.wheelHeld) {
+        // Wheel mode owns the steering keys: a press is a notch, holding one grows
+        // into a faster repeat.
         root.scrollHoldName = name; root.scrollHoldAt = now
         root.scrollFrac = 0; root.scrollReps = 0; root.scrollDets = 1
         root.scrollUltra = false
         root.pokeIdle()
+        root.mashRecord(name, now)      // so a swipe can still form while scrolling
         root.scrollPress(mdir, false)
         scrollTimer.interval = root.scrollStartMs
         scrollTimer.restart(); scrollKeyPoll.restart()
         return
       }
-      // Only the two cases that cannot wait are settled here; everything else goes
-      // through mashPress, so the press lands in the trail and the cluster stays
-      // honest. Returning early used to skip that, leaving clusterN stale and
-      // losing the first point of any sweep that opened with a direction key.
-      if (mdir && repeat && root.activeKind === "move") {
-        root.lastDownAt = now
-        root.confirmHold(now, root.repeatGapMs)
-        return
-      }
-      if (mdir && same && fastTap) {
-        root.pokeIdle()
-        root.moveDir = mdir
-        root.collectEdges()
-        root.moveStep(mdir, root.fineHeld ? root.finePx : root.baseStep, true)
-        return
-      }
-      if (!repeat) root.mashPress(name, now)
+
+      // Everything else goes through mashPress, so the press lands in the trail and
+      // the cluster stays honest.
+      root.mashPress(name, now)
       return
     }
 
@@ -1112,7 +1165,7 @@ Item {
     root.lastDownAt = now
     if (carry) root.startSweep(name, now, root.holdH)
     else root.beginHold("move", name, now)
-    root.moveStep(d, root.fineHeld ? root.finePx : root.baseStep, fastTap)
+    root.moveStep(d, root.fineHeld ? root.finePx : root.baseStep, false)
   }
 
   // ---- the debug overlay -----------------------------------------------------
@@ -1458,7 +1511,11 @@ Item {
       if (!root.active || !root.wheelHeld || root.scrollHoldName === "") {
         scrollKeyPoll.stop(); scrollTimer.stop(); return
       }
-      if (!scrollKeyProbe.running) scrollKeyProbe.running = true
+      if (!scrollKeyProbe.running) {
+        root.scrollProbeName = root.scrollHoldName
+        root.scrollProbeAt = Date.now()
+        scrollKeyProbe.running = true
+      }
     }
   }
 
@@ -1474,6 +1531,14 @@ Item {
     command: ["hyprctl", "repl", root.keyDownExpr(root.gridLabel(root.scrollHoldName))]
     stdout: StdioCollector {
       onStreamFinished: {
+        // Asking Hyprland takes about 150ms, which is longer than the gap between
+        // two presses of a swipe, so an answer routinely describes a moment that
+        // has passed. Two ways it goes stale, and both cancelled a scroll that had
+        // already replaced it: it asked about a key we have since moved on from,
+        // and it asked about this key during the gap before it was struck again.
+        // Anything asked before the current hold began is history, not an answer.
+        if (root.scrollProbeName !== root.scrollHoldName) return
+        if (root.scrollProbeAt < root.scrollHoldAt) return
         if (String(text).indexOf("true") >= 0) return
         root.scrollHoldName = ""; root.scrollFrac = 0; root.scrollUltra = false
         scrollTimer.stop(); scrollKeyPoll.stop()

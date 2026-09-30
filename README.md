@@ -106,8 +106,15 @@ exact. Holding both counts as Ctrl.
 
 They scale a held key by the same ratio, so the two mean one thing whether you tap
 or sweep. Measured on a 0.4 second hold: 124px plain, 494px with Shift, 12px with
-Ctrl. Whichever modifier you were holding when you pressed is the one the sweep
-keeps, so a sweep does not change pace under you.
+Ctrl.
+
+**You can change your mind mid-sweep.** Press or let go of a modifier while a
+direction key is already down and the speed follows immediately, so you can start a
+sweep across the screen and ease onto Ctrl as you come up to what you were aiming
+for. Measured over the second half of a one-second hold: 482px plain, 1355px once
+Shift went down, 73px once Ctrl did. Letting go takes about a quarter second to
+register, because nothing announces a modifier being released and it has to be
+asked about.
 
 **Holding sweeps, and picks up speed.** The longer you hold, the faster it goes. A
 hold of about a second and a half crosses the screen; measured on a 1536-pixel-wide

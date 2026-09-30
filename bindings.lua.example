@@ -16,7 +16,7 @@ MOUSH = {
   fine_mod    = "CTRL",
 
   -- ---- the trackball -----------------------------------------------------
-  mash_gain    = 0.66,     -- impulse per (unit/s)^3, in the coordinate space above
+  mash_gain    = 0.5,     -- impulse per (unit/s)^3, in the coordinate space above
   mash_vmax    = 3500,   -- px/s ceiling, and so the longest throw: vmax/3 pixels
   mash_samples = 4,      -- presses a fit may see
   mash_strategy = "lsq",
@@ -173,6 +173,25 @@ local function moush_bind(key, dispatcher, opts)
   end
 end
 
+-- The physical keys behind a modifier name. Bound on their own as well as in the
+-- combinations above, so pressing or releasing one while a key is already held
+-- reaches the plugin: a held key's auto-repeat keeps the binding it started with
+-- and says nothing about a modifier that has since changed.
+local MOUSH_MOD_KEYS = {
+  SHIFT = { "Shift_L", "Shift_R" },
+  CTRL  = { "Control_L", "Control_R" },
+  ALT   = { "Alt_L", "Alt_R" },
+  SUPER = { "Super_L", "Super_R" },
+}
+
+local function moush_bind_mod(name, which)
+  for _, key in ipairs(MOUSH_MOD_KEYS[name] or {}) do
+    -- Press only. A release bind on a bare modifier does not fire dependably here,
+    -- so letting go is noticed by asking, the same way every other held key is.
+    hl.bind(key, hl.dsp.global("moush:" .. which .. "on"), {})
+  end
+end
+
 local function moush_bind_grid(key, i, opts)
   if key == nil or key == "" then return end
   for _, m in ipairs(moush_mods()) do
@@ -200,6 +219,9 @@ local function moush_mode(name, cfg)
     moush_bind(cfg.cycle, hl.dsp.global("moush:cycle"), {})
     moush_bind(cfg.debug, hl.dsp.global("moush:debug"), {})
     moush_bind(cfg.strategy, hl.dsp.global("moush:strategy"), {})
+
+    moush_bind_mod(MOUSH.coarse_mod or "SHIFT", "coarse")
+    moush_bind_mod(MOUSH.fine_mod or "CTRL", "fine")
 
     for _, key in ipairs(cfg.inert or {}) do
       moush_bind(key, hl.dsp.global("moush:noop"), {})

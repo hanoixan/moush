@@ -60,6 +60,7 @@ Item {
                                   "upleft", "upright", "downleft", "downright",
                                   "lmb", "mmb", "rmb",
                                   "wheel", "cycle", "debug", "strategy",
+                                  "coarseon", "fineon",
                                   "noop"].concat(root.gridActions)
 
   // Diagonals are normalised, so one press covers the same ground as a cardinal
@@ -126,7 +127,12 @@ Item {
   property var mashDirs: ({})                 // index -> direction, for lone presses
   property var modeKeys: ({})
   property string coarseMod: "SHIFT"          // shown in the overlay; the binding
-  property string fineMod: "CTRL"             // itself lives in bindings.lua                 // lmb/mmb/rmb/wheel/fine -> key name
+  property string fineMod: "CTRL"             // itself lives in bindings.lua
+  // The physical keys behind a modifier name, for asking whether one is still down.
+  readonly property var modKeysyms: ({ SHIFT: ["Shift_L", "Shift_R"],
+                                       CTRL: ["Control_L", "Control_R"],
+                                       ALT: ["Alt_L", "Alt_R"],
+                                       SUPER: ["Super_L", "Super_R"] })                 // lmb/mmb/rmb/wheel/fine -> key name
 
   property string mode: "mash"
   property var modeNames: ["mash"]
@@ -303,7 +309,11 @@ Item {
   property bool wheelHeld: false
   property string lastMod: ""                 // modifier on the most recent grid press
   property real lastModAt: 0
-  property string holdMod: ""                 // ...and on the press that began this hold
+  property bool coarseDown: false             // modifiers as they stand right now,
+  property bool fineDown: false               // tracked so a sweep can follow them
+  property real modEventAt: 0                 // last time a press told us directly
+  property real keysAskedAt: 0                // when the in-flight question was asked
+  readonly property string liveMod: root.fineDown ? "f" : (root.coarseDown ? "c" : "")
   property bool clusterExtent: false          // this swipe has already taken its edge
   property real clusterX: 0                   // where the pointer was when it began
   property real clusterY: 0
@@ -345,7 +355,8 @@ Item {
       + " edges=" + root.edgesX.length + "/" + root.edgesY.length
       + " cluster=" + root.clusterN + " win=" + root.mashTrail.length
       + " ball=" + root.ballVX.toFixed(0) + "," + root.ballVY.toFixed(0)
-      + " wheel=" + root.wheelHeld + " mod=" + (root.lastMod || "-") + " btn=" + root.btnHeld
+      + " wheel=" + root.wheelHeld + " mod=" + (root.lastMod || "-")
+      + " live=" + (root.liveMod || "-") + " btn=" + root.btnHeld
       + " ultra=" + root.scrollUltra
       + " sreps=" + root.scrollReps + "/" + root.scrollDets
       + " snet=" + root.scrollSent
@@ -432,6 +443,11 @@ Item {
   }
 
   function close() { if (root.opened) root.finish() }
+  // Called from a release bind, the only form that fires when a key goes up.
+  function modoff(which) {
+    if (which === "coarse") root.coarseDown = false
+    else if (which === "fine") root.fineDown = false
+  }
 
   function finish() {
     root.releaseButton()                      // never leave a button down
@@ -440,7 +456,8 @@ Item {
     wheelPoll.stop(); btnPoll.stop()
     scrollTimer.stop(); scrollKeyPoll.stop(); dbgTimer.stop()
     root.wheelHeld = false
-    root.lastMod = ""; root.holdMod = ""; root.clusterExtent = false; root.scrollFine = false
+    root.lastMod = ""; root.coarseDown = false; root.fineDown = false
+    root.clusterExtent = false; root.scrollFine = false
     root.scrollHoldName = ""; root.scrollUltra = false
     root.ballVX = 0; root.ballVY = 0
     ballTimer.stop()
@@ -926,7 +943,6 @@ Item {
     if (!dn) return
     root.moveDir = root.actionDirs[dn]
     root.collectEdges()
-    root.holdMod = mod                        // a sweep keeps the size it began at
     root.beginHold("move", dn, now)           // so holding it sweeps
     root.moveStep(root.moveDir, root.stepFor(mod), false)
   }
@@ -1112,6 +1128,23 @@ Item {
       }
       return
     }
+    // A modifier pressed on its own, which is how a sweep already under way learns
+    // about it: the held key's auto-repeat keeps whatever binding it started with
+    // and never mentions a modifier that has changed since.
+    if (name === "coarseon" || name === "fineon") {
+      if (name === "coarseon") root.coarseDown = true
+      else root.fineDown = true
+      root.modEventAt = now
+      root.pokeIdle()
+      // Pressing a modifier stops the held key repeating, so the sweep is about to
+      // lapse. Ask straight away rather than waiting for the motion timer to notice,
+      // which costs another round trip's worth of decay.
+      if (root.activeKind === "move" && !keysPoll.running) {
+        keysPoll.start()
+        if (!keysProbe.running) { root.keysAskedAt = now; keysProbe.running = true }
+      }
+      return
+    }
     if (name === "wheel") {
       // Held, not tapped: a press only says it went down, so the release has to be
       // asked about.
@@ -1132,6 +1165,13 @@ Item {
       var gname = "k" + slot.i
       var mod = slot.mod
       root.lastMod = mod; root.lastModAt = now
+      // The action name says exactly what was held at this instant, so it is the
+      // authority: a press resyncs the live state and a missed release cannot
+      // leave a sweep stuck at the wrong speed.
+      if (mod === "") { root.coarseDown = false; root.fineDown = false }
+      else if (mod === "c") { root.coarseDown = true; root.fineDown = false }
+      else { root.fineDown = true }
+      root.modEventAt = now
       var dn = root.gridDir(gname)
       var mdir = dn ? root.actionDirs[dn] : null
 
@@ -1243,7 +1283,6 @@ Item {
     root.carryGap = root.lastDownAt > 0 ? now - root.lastDownAt : -1
     root.carried = carry
     root.lastDownAt = now
-    root.holdMod = ""
     if (carry) root.startSweep(name, now, root.holdH)
     else root.beginHold("move", name, now)
     root.moveStep(d, root.stepFor(""), false)
@@ -1468,13 +1507,13 @@ Item {
       if (root.holdConfirmed && !keysPoll.running
           && now >= root.downUntil - root.keysArmMs) {
         keysPoll.start()
-        if (!keysProbe.running) keysProbe.running = true
+        if (!keysProbe.running) { root.keysAskedAt = Date.now(); keysProbe.running = true }
       }
       if (down) {
         root.holdH = Math.min(root.sweepMs / 1000, root.holdH + dt)
         root.pokeIdle()
         root.moveStep(root.moveDir,
-                      root.speedFor(root.holdH) * root.speedScaleFor(root.holdMod) * dt,
+                      root.speedFor(root.holdH) * root.speedScaleFor(root.liveMod) * dt,
                       false)
       } else {
         root.holdConfirmed = false
@@ -1543,6 +1582,12 @@ Item {
       if (kv.length === 2) st[kv[0]] = (kv[1] === "true")
     }
     var now = Date.now()
+    // An answer describes the moment it was asked. A press that landed since knows
+    // better, so it wins.
+    if (now - root.keysAskedAt >= 0 && root.modEventAt <= root.keysAskedAt) {
+      root.coarseDown = (st["c"] === true)
+      root.fineDown = (st["f"] === true)
+    }
     if (st[root.lastHoldAction]) { root.sustain(root.lastHoldAction, now); return }
     var names = ["up", "down", "left", "right", "upleft", "upright", "downleft", "downright"]
     for (var j = 0; j < names.length; j++) {
@@ -1566,6 +1611,18 @@ Item {
         if (root.mashDirs[idx] === names[i]) key = root.mashLabels[idx] || ""
       terms.push('"' + names[i] + '=" .. tostring(' + (key === "" ? "false" : 'd("' + key + '")') + ')')
     }
+    // The modifiers ride along in the same question. Asking separately meant two
+    // processes competing every 70ms, and the sustain answer arriving late enough
+    // that the sweep had already decayed -- which looked like the modifier killing
+    // the sweep rather than starving it.
+    function anyOf(keys) {
+      if (!keys || keys.length === 0) return "false"
+      var parts = []
+      for (var i2 = 0; i2 < keys.length; i2++) parts.push('hl.is_key_down("' + keys[i2] + '")')
+      return "(" + parts.join(" or ") + ")"
+    }
+    terms.push('"c=" .. tostring(' + anyOf(root.modKeysyms[root.coarseMod]) + ')')
+    terms.push('"f=" .. tostring(' + anyOf(root.modKeysyms[root.fineMod]) + ')')
     return lua + terms.join(' .. " " .. ')
   }
 
@@ -1575,7 +1632,7 @@ Item {
     repeat: true
     onTriggered: {
       if (!root.active) { keysPoll.stop(); return }
-      if (!keysProbe.running) keysProbe.running = true
+      if (!keysProbe.running) { root.keysAskedAt = Date.now(); keysProbe.running = true }
     }
   }
 

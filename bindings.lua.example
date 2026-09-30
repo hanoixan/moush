@@ -63,7 +63,7 @@ MOUSEKEYS = {
   mash_strategy = "lsq",
   mash_gain = 20,
   mash_vmax = 1000,
-  mash_samples = 3,
+  mash_samples = 4,
   mash_debug_strategies = "cpa,lsq,pca,ewma",
 }
 

@@ -305,6 +305,8 @@ Item {
   property real lastModAt: 0
   property string holdMod: ""                 // ...and on the press that began this hold
   property bool clusterExtent: false          // this swipe has already taken its edge
+  property real clusterX: 0                   // where the pointer was when it began
+  property real clusterY: 0
   property bool scrollFine: false             // scrolling without the ramp
   property var scrollDir: [0, 1]              // the direction the current hold scrolls
   property real scrollWant: 0                 // notches this swipe has asked for
@@ -941,6 +943,11 @@ Item {
       scrollTimer.restart(); scrollKeyPoll.restart()
       return
     }
+    // Measured from where the swipe began, not from where its first press left the
+    // pointer. That press moves 32px in its own key's direction, which is usually
+    // back the way the swipe then runs, and it was enough to make a repeated swipe
+    // stick: the step moved off the edge and the jump found the same one again.
+    root.warp(root.clusterX, root.clusterY)
     root.moveDir = dir
     root.collectEdges()
     root.moveStep(dir, root.stepFor("c"), true)
@@ -962,6 +969,8 @@ Item {
       root.clusterN = 0
       root.clusterExtent = false
       root.scrollWant = 0; root.scrollSent = 0
+      // Where the swipe started, before its first press moved anything.
+      root.clusterX = root.curX; root.clusterY = root.curY
     }
     root.clusterN += 1
     root.mashLastAt = now

@@ -119,7 +119,8 @@ arrow. Shift with `Y O` jumps right too, because `Y` to `O` points right. Any tw
 keys that describe the direction you want will do.
 
 One jump per swipe, however many keys you cross: Shift with `J K`, `J K L` and
-`J K L ,` all land in the same place. To jump again, pause and swipe again.
+`J K L ,` all land in the same place. To jump again, pause and swipe again, and it
+carries on to the next edge each time until it runs out of screen.
 
 Because a modifier says what you mean, nothing you do with the keys alone can
 trigger this by accident. Tapping one key over and over is just tapping, at any

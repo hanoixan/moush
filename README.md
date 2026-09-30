@@ -230,6 +230,24 @@ along the fitted axis, ignoring sideways scatter. The subvectors of the current
 cluster are averaged, weighted by length, into one drive vector,
 so longer hops count for more and a mash that reverses cancels itself out.
 
+**A finger still on a key is a hand still on the ball.** If a swipe ends without
+lifting every key, the ball is *gripped*: it neither moves nor decays, and letting
+go rolls it on from exactly the momentum it was caught with.
+
+```
+gripped   +0.4s  x=311  grip=true   ball=745,0
+          +1.6s  x=311  grip=true   ball=745,0     no motion, no decay
+released  +0.35s x=487  grip=false  ball=204,0
+          +1.05s x=550  grip=false  ball=9,0       rolled on +239px
+```
+
+This is polled rather than driven by key releases, because a release cannot be
+relied on: once two bound keys are held Hyprland delivers neither key's release,
+and a missed one would leave the ball gripped for the rest of the session. The poll
+starts only once the ball has been rolling quietly for `holdCheckMs` (50ms) — not
+on every press, which would cost a subprocess per tap — so there is a brief glide,
+bounded by that plus the round trip, before the grip takes hold.
+
 **The ball.** Each press adds an impulse along the drive direction and friction
 bleeds it away: `v += u·mash_gain·speed³`, then `v *= e^(-friction·dt)`, capped at
 `mashVMax`. Total distance from one impulse is `v/friction`, so friction sets how

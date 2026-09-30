@@ -103,6 +103,12 @@ Item {
   property real mashVMax: 1000                // px/s ceiling; also the longest throw
   readonly property real mashScrollPx: 90     // px of ball travel per wheel detent
   readonly property int wheelPollMs: 70       // w gives no reliable release; ask instead
+  // A finger still resting on a key is a hand still on the ball. Checked by asking
+  // the compositor, because a release event cannot be relied on: once two bound
+  // keys are held Hyprland delivers neither key's release, and a missed one would
+  // leave the ball gripped for the rest of the session.
+  readonly property int holdCheckMs: 50       // quiet for this long, then ask
+  readonly property int holdPollMs: 70        // ...and keep asking while it is held
 
   readonly property int keysArmMs: 25         // ask the compositor this long before a hold would lapse
   readonly property int keysPollMs: 60        // ...and keep asking this often while it says held
@@ -253,6 +259,7 @@ Item {
   property real ballVX: 0
   property real ballVY: 0
   property bool wheelHeld: false
+  property bool ballHeld: false               // a grid key is still down: no free spin
   property real scrollAcc: 0
   property real mashLastAt: 0
   property bool mashDebug: true               // the grid overlay; backtick toggles it
@@ -300,7 +307,7 @@ Item {
       + " ball=" + root.ballVX.toFixed(0) + "," + root.ballVY.toFixed(0)
       + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
       + " gain=" + root.mashGain.toFixed(2) + " vmax=" + root.mashVMax
-      + " samples=" + root.mashSamples
+      + " samples=" + root.mashSamples + " grip=" + root.ballHeld
       + " cluster=" + root.clusterN + " win=" + root.mashTrail.length
       + " strategy=" + root.mashStrategy
       + " shown=[" + root.mashDebugStrategies.join(",") + "]"
@@ -343,6 +350,8 @@ Item {
     root.lastDownAt = 0
     root.keysDown = ""
     root.wheelHeld = false
+    root.ballHeld = false
+    holdPoll.stop()
     keysPoll.stop()
     wheelPoll.stop()
     root.mashStop()
@@ -1174,6 +1183,8 @@ Item {
   function ballStop() {
     root.ballVX = 0; root.ballVY = 0
     root.scrollAcc = 0
+    root.ballHeld = false
+    holdPoll.stop()
     ballTimer.stop()
   }
 
@@ -1508,6 +1519,17 @@ Item {
       var now = Date.now()
       var dt = Math.min(0.1, Math.max(0.001, (now - root.lastTickAt) / 1000))
       root.lastTickAt = now
+      // Still gripped: hold the momentum rather than spending it. Neither moving
+      // nor decaying, so letting go rolls on from exactly where it was caught.
+      if (root.ballHeld) return
+      // Quiet for a moment with the ball still rolling is when a held key would
+      // matter, so that is when it gets asked about — not on every press, which
+      // would be a subprocess per tap.
+      if (root.keymap === "mash" && !holdPoll.running
+          && now - root.mashLastAt > root.holdCheckMs) {
+        holdPoll.start()
+        if (!holdProbe.running) holdProbe.running = true
+      }
       var decay = Math.exp(-root.mashFriction * dt)
       root.ballVX *= decay
       root.ballVY *= decay
@@ -1528,6 +1550,40 @@ Item {
       }
       root.pokeIdle()
       root.warp(root.curX + root.ballVX * dt, root.curY + root.ballVY * dt)
+    }
+  }
+
+  Timer {
+    id: holdPoll
+    interval: root.holdPollMs
+    repeat: true
+    onTriggered: {
+      if (!root.active || root.keymap !== "mash") {
+        holdPoll.stop(); root.ballHeld = false; return
+      }
+      if (!holdProbe.running) holdProbe.running = true
+    }
+  }
+
+  // Counts how many of the grid's keys are physically down. bindings.lua already
+  // publishes their names for the debug display, so the question is asked there
+  // and the answer is a single number.
+  Process {
+    id: holdProbe
+    command: ["hyprctl", "repl",
+      'local L = (((MOUSEKEYS or {}).keys or {}).mash or {}).labels or {} '
+      + 'local function d(s) if not s then return false end '
+      + 'for _, n in ipairs({ s, s:lower(), s:sub(1,1):upper() .. s:sub(2):lower() }) do '
+      + 'if hl.is_key_down(n) then return true end end return false end '
+      + 'local n = 0 for _, k in pairs(L) do if d(k) then n = n + 1 end end '
+      + 'return "held=" .. n']
+    stdout: StdioCollector {
+      onStreamFinished: {
+        var n = parseInt(String(text).replace("held=", "").trim(), 10)
+        root.ballHeld = (n > 0)
+        if (!root.ballHeld) holdPoll.stop()      // rolling again; nothing to watch
+        else if (!holdPoll.running) holdPoll.start()
+      }
     }
   }
 

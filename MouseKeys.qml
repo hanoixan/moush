@@ -86,7 +86,7 @@ Item {
   // The fit sees at most this many of the most recent presses. Still clipped by
   // the cluster — a new gesture starts empty — so it is the last mashSamples
   // events *within* the current cluster, never a mix of two.
-  readonly property int mashSamples: 5
+  property int mashSamples: 5
   readonly property var mashStrategies: ["cpa", "lsq", "net", "pca", "ewma"]
   readonly property real dbgPitch: 26         // px between grid cells
   readonly property real dbgScale: 4          // px drawn per key-width/second
@@ -300,6 +300,7 @@ Item {
       + " ball=" + root.ballVX.toFixed(0) + "," + root.ballVY.toFixed(0)
       + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
       + " gain=" + root.mashGain.toFixed(2) + " vmax=" + root.mashVMax
+      + " samples=" + root.mashSamples
       + " cluster=" + root.clusterN + " win=" + root.mashTrail.length
       + " strategy=" + root.mashStrategy
       + " shown=[" + root.mashDebugStrategies.join(",") + "]"
@@ -1096,12 +1097,15 @@ Item {
     var hist = root.mashTrail.concat([{ x: pos.x, y: pos.y, t: now }])
     if (hist.length > root.mashSamples) hist = hist.slice(hist.length - root.mashSamples)
     root.mashTrail = hist
-    root.dbgHits = root.dbgHits.concat([{ name: name, t: now }])
+    // The overlay shows exactly what the fit is working from: the same last
+    // mashSamples events, so a key that has aged out of the window goes back to
+    // looking untouched rather than implying it still counts.
+    root.dbgHits = root.dbgHits.concat([{ name: name, t: now }]).slice(-root.mashSamples)
     root.dbgLastAt = now
     if (hist.length >= 3) {
       var sv = root.mashSubvector(hist[hist.length - 3], hist[hist.length - 2],
                                   hist[hist.length - 1])
-      root.dbgVecs = root.dbgVecs.concat([sv])
+      root.dbgVecs = root.dbgVecs.concat([sv]).slice(-Math.max(1, root.mashSamples - 2))
       if (sv.ok) {
         // Five events make three overlapping triples, so cpa keeps that many to
         // stay level with the window the others fit over.
@@ -1419,7 +1423,8 @@ Item {
       + '.. " mash_strategy=" .. tostring(m.mash_strategy or "") '
       + '.. " mash_debug_strategies=" .. tostring(m.mash_debug_strategies or "") '
       + '.. " mash_gain=" .. tostring(m.mash_gain or "") '
-      + '.. " mash_vmax=" .. tostring(m.mash_vmax or "")']
+      + '.. " mash_vmax=" .. tostring(m.mash_vmax or "") '
+      + '.. " mash_samples=" .. tostring(m.mash_samples or "")']
     stdout: StdioCollector {
       // "fast_tap_ms=135 carry_ms=135" — named pairs so adding a knob is one term
       // here and one in bindings.lua, and a missing one just keeps its default.
@@ -1469,6 +1474,9 @@ Item {
           } else if (kv[0] === "mash_vmax" && v !== root.mashVMax) {
             root.mashVMax = v
             root.log("mashVMax <- " + v + " (bindings.lua)")
+          } else if (kv[0] === "mash_samples" && v !== root.mashSamples) {
+            root.mashSamples = v
+            root.log("mashSamples <- " + v + " (bindings.lua)")
           }
         }
       }

@@ -43,6 +43,12 @@ hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
 --                          should nudge one pixel, a four-press burst should
 --                          cross the screen — so small changes here are felt
 --                          hardest at the fast end.
+--   mash_samples           how many of the most recent presses a fit may see.
+--                          Fewer follows the hand more closely and turns sooner;
+--                          more is steadier but keeps steering by where the
+--                          gesture has been. Still clipped by the cluster, so it
+--                          is the last N presses of the gesture in progress. The
+--                          debug overlay shows exactly these, and no more.
 --   mash_vmax              ceiling on ball speed, px/s, and so the longest throw
 --                          a burst can produce: friction is 3 e-folds a second,
 --                          so the cursor coasts at most mash_vmax / 3 pixels.
@@ -57,6 +63,7 @@ MOUSEKEYS = {
   mash_strategy = "lsq",
   mash_gain = 20,
   mash_vmax = 1000,
+  mash_samples = 5,
   mash_debug_strategies = "cpa,lsq,pca,ewma",
 }
 

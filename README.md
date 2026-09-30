@@ -138,7 +138,7 @@ Quartering keeps a column step and a row step the same distance, so the grid
 measures the way it feels under the hand rather than the way it is easiest to
 type out.
 
-**The fit sees the last `mashSamples` (5) presses.** Older ones drop out, so a
+**The fit sees the last `mash_samples` (5) presses.** Older ones drop out, so a
 long mash steers by what your hand is doing now rather than by an average over the
 whole gesture. `cpa` keeps three subvectors to match, since five events make three
 overlapping triples.
@@ -148,6 +148,13 @@ presses in cluster   2   3   5   6   8
 window               2   3   5   5   5
 cpa subvectors       0   1   3   3   3
 ```
+
+**The overlay shows exactly those presses and no more.** A key that has aged out
+of the window goes back to looking untouched, and the green timing shade
+renormalises over what remains, so the grid always depicts what the fit is
+actually working from rather than the whole gesture. Mashing `Y U I O P [ H J`
+with `mash_samples = 5` leaves `O P [ H J` lit and `Y U I` dark; at 3 only
+`[ H J` remain.
 
 **Presses are grouped into clusters, and a fit never spans two.** A gap longer
 than `mashClusterMs` (200ms) ends the gesture, and the next press starts a fresh
@@ -186,7 +193,9 @@ moves the cursor by the `mashStepPx` floor and nothing more.
 ```lua
 MOUSEKEYS = {
   mash_strategy = "lsq",                        -- steers the pointer
-  mash_gain = 0.30,                             -- how hard each press shoves it
+  mash_gain = 20,                               -- how hard each press shoves it
+  mash_vmax = 1000,                             -- ceiling, and so the longest throw
+  mash_samples = 5,                             -- presses a fit may see
   mash_debug_strategies = "cpa,lsq,pca,ewma",   -- also drawn, for comparison
 }
 ```

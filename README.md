@@ -230,6 +230,45 @@ along the fitted axis, ignoring sideways scatter. The subvectors of the current
 cluster are averaged, weighted by length, into one drive vector,
 so longer hops count for more and a mash that reverses cancels itself out.
 
+#### Nudging
+
+A lone tap is not a swipe. `mash_nudge` turns one into a **nudge**: a small push
+away from the middle of the grid, for the last few pixels rather than for
+travelling. Two rings say how far.
+
+```
+   7  8  9  0  -        outer ring, mash_nudge_outer (5px)
+  Y  U  I  O  P  [      I O inner (1px), Y [ outer, U P between
+   H  J  K  L  ;  '     K L inner,       H ' outer, J ; between
+    N  M  ,  .  /       outer ring
+```
+
+A key *on* a ring pushes that ring's distance exactly; only keys between the rings
+interpolate, by how far out they sit. Going by radius alone would shortchange the
+ring members — the outer ring is not a circle, and its top and bottom middles sit
+well inside the mean radius, so `9` would push 3.2px where `-` pushes 5.
+
+The direction is from the centre of the inner ring through the key, so the grid
+works like a dial: the further out you tap, the further it goes.
+
+```
+key     ring      moved      distance
+I       inner     (-1,-1)     1.41px
+O       inner     (+1, 0)     1.00px
+U       between   (-4,-1)     4.12px
+7       outer     (-4,-3)     5.00px
+Y       outer     (-5,-1)     5.10px
+```
+
+The nudge fires on the opening press of a cluster rather than waiting to confirm
+the tap stayed alone — waiting would put 200ms of delay on the one gesture that
+exists to be precise. A sweep that follows keeps the pixel or two already pushed,
+which vanishes into it, and clears the marking on its next press.
+
+In the debug view a nudged key goes **red**, with a green vector from the ring
+centre out to it: the push actually applied, unlike the drive vector, which is a
+direction drawn from the grid's centre.
+
 **A finger still on a key is a hand still on the ball.** If a swipe ends without
 lifting every key, the ball is *gripped*: the cursor stops, and the momentum bleeds
 away rather than being stored. Letting go does not resume the swipe.

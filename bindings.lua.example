@@ -49,6 +49,13 @@ hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
 --                          gesture has been. Still clipped by the cluster, so it
 --                          is the last N presses of the gesture in progress. The
 --                          debug overlay shows exactly these, and no more.
+--   mash_nudge             whether a lone tap nudges the pointer a few pixels away
+--                          from the middle of the grid, instead of doing nothing.
+--                          A tap that turns into a swipe keeps its nudge, which is
+--                          a pixel or two and vanishes into the sweep.
+--   mash_nudge_inner       pixels an inner-ring key pushes (I O K L)
+--   mash_nudge_outer       pixels an outer-ring key pushes (the surrounding ring);
+--                          keys between the rings interpolate between the two.
 --   mash_grip              whether a key still held at the end of a swipe grips
 --                          the ball. On, the cursor stops and the momentum bleeds
 --                          away, so letting go does not resume the swipe. Off, the
@@ -73,6 +80,9 @@ MOUSEKEYS = {
   mash_gain = 20,
   mash_vmax = 1000,
   mash_samples = 4,
+  mash_nudge = true,
+  mash_nudge_inner = 1,
+  mash_nudge_outer = 5,
   mash_grip = false,
   mash_grip_friction = 12,
   mash_debug_strategies = "cpa,lsq,pca,ewma",
@@ -161,9 +171,42 @@ local mash_grid = {
 -- rather than left to fall through to whatever is underneath.
 local mash_null = { "5", "6", "R", "T", "F", "G", "V", "B" }
 
+-- A lone tap is a nudge rather than a swipe: a small push away from the middle of
+-- the grid, for the last few pixels. Two rings say how far. A key on a ring pushes
+-- that ring's distance exactly; a key between them interpolates by how far out it
+-- sits, which is what U, P, J and semicolon do here.
+--
+--        7  8  9  0  -          outer
+--       Y  U  I  O  P  [        I O inner, Y [ outer, U P between
+--        H  J  K  L  ;  '       K L inner, H ' outer, J ; between
+--         N  M  ,  .  /         outer
+local mash_inner = { "I", "O", "K", "L" }
+local mash_outer = { "7", "8", "9", "0", "minus", "bracketleft", "apostrophe",
+                     "slash", "period", "comma", "M", "N", "H", "Y" }
+
+-- The plugin knows positions, not key names, so the rings are published as the
+-- action names it does know and it works the geometry out from their coordinates.
+local function mash_action(key)
+  for _, row in ipairs(mash_grid) do
+    for k, x4 in pairs(row.keys) do
+      if k == key then return "m" .. x4 .. "_" .. row.y end
+    end
+  end
+end
+
+local function mash_ring(keys)
+  local out = {}
+  for _, k in ipairs(keys) do
+    local a = mash_action(k)
+    if a then out[#out + 1] = a end
+  end
+  return table.concat(out, ",")
+end
+
 local function mousekeys_mash()
   MOUSEKEYS.keys = MOUSEKEYS.keys or {}
-  MOUSEKEYS.keys.mash = { wheel = "W", labels = {} }   -- wheel is polled; labels
+  MOUSEKEYS.keys.mash = { wheel = "W", labels = {},    -- wheel is polled; labels
+                          inner = mash_ring(mash_inner), outer = mash_ring(mash_outer) }
   local labels = MOUSEKEYS.keys.mash.labels             -- name the debug display's cells
   hl.define_submap("mousekeys-mash", function()
     hl.bind("CTRL + ALT + Escape", hl.dsp.submap("reset"))

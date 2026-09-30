@@ -107,6 +107,14 @@ Item {
   // the compositor, because a release event cannot be relied on: once two bound
   // keys are held Hyprland delivers neither key's release, and a missed one would
   // leave the ball gripped for the rest of the session.
+  // A lone tap is a nudge: a small, exact push away from the middle of the grid,
+  // for the last few pixels rather than for travelling.
+  property bool mashNudge: true
+  property real nudgeInnerPx: 1               // an inner-ring key pushes this far
+  property real nudgeOuterPx: 5               // an outer-ring key this far
+  property var nudgeInnerNames: []            // action names, published by bindings.lua
+  property var nudgeOuterNames: []
+  property string nudgeName: ""               // the key the last nudge came from
   property bool mashGrip: false               // grip the ball while a key is held
   property real mashGripFriction: 12          // e-folds/s bled off while gripped
   readonly property int holdCheckMs: 50       // quiet for this long, then ask
@@ -310,6 +318,9 @@ Item {
       + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
       + " gain=" + root.mashGain.toFixed(2) + " vmax=" + root.mashVMax
       + " samples=" + root.mashSamples
+      + " nudge=" + root.mashNudge + "/" + root.nudgeInnerPx + "-" + root.nudgeOuterPx
+      + " rings=" + root.nudgeInnerNames.length + "/" + root.nudgeOuterNames.length
+      + " nudged=" + (root.nudgeName === "" ? "-" : root.nudgeName)
       + " gripOn=" + root.mashGrip + "/" + root.mashGripFriction.toFixed(0)
       + " grip=" + root.ballHeld
       + " cluster=" + root.clusterN + " win=" + root.mashTrail.length
@@ -885,6 +896,7 @@ Item {
   readonly property var dbgKeyIdle: [38, 38, 38]     // never struck this cluster
   readonly property var dbgKeyCold: [52, 52, 52]     // struck first
   readonly property var dbgKeyHot: [40, 235, 95]     // struck most recently
+  readonly property var dbgKeyNudge: [225, 55, 55]   // a lone tap: a nudge
 
   // Colour and dash come from the strategy's name, so a strategy looks the same
   // every run and two of them never collide by accident.
@@ -1086,6 +1098,56 @@ Item {
     return null
   }
 
+  // The rings are named in bindings.lua, which owns the layout; their geometry is
+  // worked out from the coordinates here. The centre is the middle of the inner
+  // ring, and the two mean radii bracket the keys that sit between the rings.
+  function nudgeGeom() {
+    var inn = root.nudgeInnerNames, out = root.nudgeOuterNames
+    var cx = 0, cy = 0, n = 0, i, q
+    for (i = 0; i < inn.length; i++) {
+      q = root.mashPos(inn[i])
+      if (q) { cx += q.x; cy += q.y; n++ }
+    }
+    if (n === 0) return null
+    cx /= n; cy /= n
+    function meanR(names) {
+      var sum = 0, m = 0
+      for (var j = 0; j < names.length; j++) {
+        var r = root.mashPos(names[j])
+        if (!r) continue
+        sum += Math.sqrt((r.x - cx) * (r.x - cx) + (r.y - cy) * (r.y - cy)); m++
+      }
+      return m > 0 ? sum / m : 0
+    }
+    return ({ cx: cx, cy: cy, ri: meanR(inn), ro: meanR(out) })
+  }
+
+  // A key *on* a ring pushes that ring's distance exactly; only keys between the
+  // rings interpolate. Going by radius alone would shortchange them — the outer
+  // ring is not a circle, and its top and bottom middles sit well inside the mean,
+  // so 9 would push 3.2px where - pushes 5.
+  function nudgePixels(name, g, d) {
+    if (root.nudgeInnerNames.indexOf(name) >= 0) return root.nudgeInnerPx
+    if (root.nudgeOuterNames.indexOf(name) >= 0) return root.nudgeOuterPx
+    var t = g.ro > g.ri ? (d - g.ri) / (g.ro - g.ri) : 0
+    t = t < 0 ? 0 : (t > 1 ? 1 : t)
+    return root.nudgeInnerPx + (root.nudgeOuterPx - root.nudgeInnerPx) * t
+  }
+
+  function mashNudgeDo(name, now) {
+    if (!root.mashNudge) return
+    var g = root.nudgeGeom(), q = root.mashPos(name)
+    if (!g || !q) return
+    var dx = q.x - g.cx, dy = q.y - g.cy
+    var d = Math.sqrt(dx * dx + dy * dy)
+    if (!(d > 0)) return                       // dead centre: no direction to push
+    var px = root.nudgePixels(name, g, d)
+    root.nudgeName = name
+    root.pokeIdle()
+    root.warp(root.curX + (dx / d) * px, root.curY + (dy / d) * px)
+    if (root.mashDebug) dbgTimer.start()
+  }
+
   function mashPress(name, now) {
     var pos = root.mashPos(name)
     if (!pos) return
@@ -1097,6 +1159,7 @@ Item {
       root.mashTrail = []; root.mashSubs = []
       root.dbgStrats = ({}); root.dbgHits = []; root.dbgVecs = []
       root.dbgDriveAt = 0; root.dbgDriveX = 0; root.dbgDriveY = 0
+      root.nudgeName = ""
       root.clusterN = 0
     }
     root.clusterN += 1
@@ -1113,6 +1176,7 @@ Item {
     // The overlay shows exactly what the fit is working from: the same last
     // mashSamples events, so a key that has aged out of the window goes back to
     // looking untouched rather than implying it still counts.
+    if (root.clusterN > 1) root.nudgeName = ""     // a sweep, not a nudge
     root.dbgHits = root.dbgHits.concat([{ name: name, t: now }]).slice(-root.mashSamples)
     root.dbgLastAt = now
     if (hist.length >= 3) {
@@ -1150,7 +1214,12 @@ Item {
       // distance in key widths, and feeding that to a formula expecting key
       // widths per second would throw the ball at an arbitrary speed.
       var n = hist.length
-      if (n < 2) return
+      // The opening press of a cluster: no second point yet, so no direction to
+      // fit. A tap that stays alone is a nudge, so this is where it happens —
+      // immediately, rather than waiting out the cluster to confirm it was alone.
+      // A sweep that follows overwrites the drawing on its next press, and the few
+      // pixels already pushed are lost in it.
+      if (n < 2) { root.mashNudgeDo(name, now); return }
       var dx = hist[n - 1].x - hist[n - 2].x, dy = hist[n - 1].y - hist[n - 2].y
       var m = Math.sqrt(dx * dx + dy * dy)
       if (!(m > 0)) return
@@ -1441,7 +1510,12 @@ Item {
       + '.. " mash_vmax=" .. tostring(m.mash_vmax or "") '
       + '.. " mash_samples=" .. tostring(m.mash_samples or "") '
       + '.. " mash_grip=" .. tostring(m.mash_grip) '
-      + '.. " mash_grip_friction=" .. tostring(m.mash_grip_friction or "")']
+      + '.. " mash_grip_friction=" .. tostring(m.mash_grip_friction or "") '
+      + '.. " mash_nudge=" .. tostring(m.mash_nudge) '
+      + '.. " mash_nudge_inner=" .. tostring(m.mash_nudge_inner or "") '
+      + '.. " mash_nudge_outer=" .. tostring(m.mash_nudge_outer or "") '
+      + '.. " mash_inner=" .. tostring(((m.keys or {}).mash or {}).inner or "") '
+      + '.. " mash_outer=" .. tostring(((m.keys or {}).mash or {}).outer or "")']
     stdout: StdioCollector {
       // "fast_tap_ms=135 carry_ms=135" — named pairs so adding a knob is one term
       // here and one in bindings.lua, and a missing one just keeps its default.
@@ -1472,20 +1546,27 @@ Item {
             root.mashLabels = lm
             continue
           }
-          if (kv[0] === "mash_grip") {              // the only boolean so far
-            if (kv[1] === "true" || kv[1] === "false") root.mashGrip = (kv[1] === "true")
+          if (kv[0] === "mash_grip" || kv[0] === "mash_nudge") {
+            if (kv[1] !== "true" && kv[1] !== "false") continue
+            var on = (kv[1] === "true")
+            if (kv[0] === "mash_grip") root.mashGrip = on
+            else root.mashNudge = on
             continue
           }
-          if (kv[0] === "mash_gain" || kv[0] === "mash_grip_friction") {
+          if (kv[0] === "mash_inner" || kv[0] === "mash_outer") {
+            var names = kv[1] === "" ? [] : kv[1].split(",")
+            if (kv[0] === "mash_inner") root.nudgeInnerNames = names
+            else root.nudgeOuterNames = names
+            continue
+          }
+          if (kv[0] === "mash_gain" || kv[0] === "mash_grip_friction"
+              || kv[0] === "mash_nudge_inner" || kv[0] === "mash_nudge_outer") {
             var g = parseFloat(kv[1])
             if (!(g > 0)) continue
-            if (kv[0] === "mash_gain" && g !== root.mashGain) {
-              root.mashGain = g
-              root.log("mashGain <- " + g + " (bindings.lua)")
-            } else if (kv[0] === "mash_grip_friction" && g !== root.mashGripFriction) {
-              root.mashGripFriction = g
-              root.log("mashGripFriction <- " + g + " (bindings.lua)")
-            }
+            if (kv[0] === "mash_gain") root.mashGain = g
+            else if (kv[0] === "mash_grip_friction") root.mashGripFriction = g
+            else if (kv[0] === "mash_nudge_inner") root.nudgeInnerPx = g
+            else root.nudgeOuterPx = g
             continue
           }
           var v = parseInt(kv[1], 10)
@@ -2004,6 +2085,23 @@ Item {
           ctx.fillText(e.imp > 0 ? String(Math.round(e.imp)) : "-", 92, ey2)
         }
 
+        // A nudge's vector runs from the middle of the inner ring to the key that
+        // made it, which is the push it actually applied — unlike the drive vector,
+        // which is a direction and starts at the grid's centre.
+        if (root.nudgeName !== "") {
+          var ng = root.nudgeGeom(), nq = root.mashPos(root.nudgeName)
+          if (ng && nq) {
+            var nox = pad + ng.cx * pitch, noy = pad + ng.cy * pitch
+            var ndx = (nq.x - ng.cx) * pitch, ndy = (nq.y - ng.cy) * pitch
+            var nlen = Math.sqrt(ndx * ndx + ndy * ndy)
+            ctx.strokeStyle = root.dbgRgba(64, 255, 128, 1)
+            ctx.fillStyle = ctx.strokeStyle
+            ctx.lineWidth = 2
+            ctx.beginPath(); ctx.moveTo(nox, noy); ctx.lineTo(nox + ndx, noy + ndy); ctx.stroke()
+            ctx.beginPath(); ctx.arc(nox + ndx, noy + ndy, 3, 0, 2 * Math.PI); ctx.fill()
+          }
+        }
+
         // Keys last so they sit over the vector origin rather than under it.
         //
         // Each key is shaded by *when* within the cluster it was struck — first
@@ -2030,7 +2128,10 @@ Item {
               if (root.dbgHits[h].name === nm) hitT = root.dbgHits[h].t
             // A cluster of one has no span to divide by, and its only key is also
             // its most recent, so it reads as fully green.
-            var bg = hitT < 0 ? root.dbgKeyIdle
+            // A nudge is its own thing, not a point on the gesture's timeline, so
+            // it is marked rather than shaded.
+            var bg = nm === root.nudgeName ? root.dbgKeyNudge
+                   : hitT < 0 ? root.dbgKeyIdle
                               : root.dbgMix(root.dbgKeyCold, root.dbgKeyHot,
                                             span > 0 ? (hitT - t0) / span : 1)
             var px = pad + (x4 / 4) * pitch, py = pad + y * pitch

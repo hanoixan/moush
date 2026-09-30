@@ -49,6 +49,15 @@ hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
 --                          gesture has been. Still clipped by the cluster, so it
 --                          is the last N presses of the gesture in progress. The
 --                          debug overlay shows exactly these, and no more.
+--   mash_grip              whether a key still held at the end of a swipe grips
+--                          the ball. On, the cursor stops and the momentum bleeds
+--                          away, so letting go does not resume the swipe. Off, the
+--                          ball free spins whatever your fingers are doing, and
+--                          nothing is polled.
+--   mash_grip_friction     how fast a grip bleeds the momentum off, e-folds per
+--                          second. Well above mash_vmax's rolling friction of 3,
+--                          because holding on is meant to stop the cursor rather
+--                          than slow it gently. Lower it to let a grip coast.
 --   mash_vmax              ceiling on ball speed, px/s, and so the longest throw
 --                          a burst can produce: friction is 3 e-folds a second,
 --                          so the cursor coasts at most mash_vmax / 3 pixels.
@@ -64,6 +73,8 @@ MOUSEKEYS = {
   mash_gain = 20,
   mash_vmax = 1000,
   mash_samples = 4,
+  mash_grip = true,
+  mash_grip_friction = 12,
   mash_debug_strategies = "cpa,lsq,pca,ewma",
 }
 

@@ -107,7 +107,8 @@ Item {
   // the compositor, because a release event cannot be relied on: once two bound
   // keys are held Hyprland delivers neither key's release, and a missed one would
   // leave the ball gripped for the rest of the session.
-  readonly property real mashGripFriction: 12  // e-folds/s bled off while gripped
+  property bool mashGrip: true                // grip the ball while a key is held
+  property real mashGripFriction: 12          // e-folds/s bled off while gripped
   readonly property int holdCheckMs: 50       // quiet for this long, then ask
   readonly property int holdPollMs: 70        // ...and keep asking while it is held
 
@@ -308,7 +309,9 @@ Item {
       + " ball=" + root.ballVX.toFixed(0) + "," + root.ballVY.toFixed(0)
       + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
       + " gain=" + root.mashGain.toFixed(2) + " vmax=" + root.mashVMax
-      + " samples=" + root.mashSamples + " grip=" + root.ballHeld
+      + " samples=" + root.mashSamples
+      + " gripOn=" + root.mashGrip + "/" + root.mashGripFriction.toFixed(0)
+      + " grip=" + root.ballHeld
       + " cluster=" + root.clusterN + " win=" + root.mashTrail.length
       + " strategy=" + root.mashStrategy
       + " shown=[" + root.mashDebugStrategies.join(",") + "]"
@@ -1436,7 +1439,9 @@ Item {
       + '.. " mash_debug_strategies=" .. tostring(m.mash_debug_strategies or "") '
       + '.. " mash_gain=" .. tostring(m.mash_gain or "") '
       + '.. " mash_vmax=" .. tostring(m.mash_vmax or "") '
-      + '.. " mash_samples=" .. tostring(m.mash_samples or "")']
+      + '.. " mash_samples=" .. tostring(m.mash_samples or "") '
+      + '.. " mash_grip=" .. tostring(m.mash_grip) '
+      + '.. " mash_grip_friction=" .. tostring(m.mash_grip_friction or "")']
     stdout: StdioCollector {
       // "fast_tap_ms=135 carry_ms=135" — named pairs so adding a knob is one term
       // here and one in bindings.lua, and a missing one just keeps its default.
@@ -1467,11 +1472,19 @@ Item {
             root.mashLabels = lm
             continue
           }
-          if (kv[0] === "mash_gain") {
+          if (kv[0] === "mash_grip") {              // the only boolean so far
+            if (kv[1] === "true" || kv[1] === "false") root.mashGrip = (kv[1] === "true")
+            continue
+          }
+          if (kv[0] === "mash_gain" || kv[0] === "mash_grip_friction") {
             var g = parseFloat(kv[1])
-            if (g > 0 && g !== root.mashGain) {
+            if (!(g > 0)) continue
+            if (kv[0] === "mash_gain" && g !== root.mashGain) {
               root.mashGain = g
               root.log("mashGain <- " + g + " (bindings.lua)")
+            } else if (kv[0] === "mash_grip_friction" && g !== root.mashGripFriction) {
+              root.mashGripFriction = g
+              root.log("mashGripFriction <- " + g + " (bindings.lua)")
             }
             continue
           }
@@ -1526,6 +1539,8 @@ Item {
       // to stop the cursor, not to slow it gently — so a grip of a couple of
       // hundred milliseconds leaves nothing to continue with. The cursor does not
       // move meanwhile; only the momentum drains.
+      // Turned off mid-grip, so let go of whatever is being held.
+      if (!root.mashGrip && root.ballHeld) { root.ballHeld = false; holdPoll.stop() }
       if (root.ballHeld) {
         var gd = Math.exp(-root.mashGripFriction * dt)
         root.ballVX *= gd
@@ -1537,7 +1552,7 @@ Item {
       // Quiet for a moment with the ball still rolling is when a held key would
       // matter, so that is when it gets asked about — not on every press, which
       // would be a subprocess per tap.
-      if (root.keymap === "mash" && !holdPoll.running
+      if (root.mashGrip && root.keymap === "mash" && !holdPoll.running
           && now - root.mashLastAt > root.holdCheckMs) {
         holdPoll.start()
         if (!holdProbe.running) holdProbe.running = true
@@ -1570,7 +1585,7 @@ Item {
     interval: root.holdPollMs
     repeat: true
     onTriggered: {
-      if (!root.active || root.keymap !== "mash") {
+      if (!root.active || !root.mashGrip || root.keymap !== "mash") {
         holdPoll.stop(); root.ballHeld = false; return
       }
       if (!holdProbe.running) holdProbe.running = true

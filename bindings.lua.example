@@ -56,6 +56,11 @@ hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
 --   mash_nudge_inner       pixels an inner-ring key pushes (I O K L)
 --   mash_nudge_outer       pixels an outer-ring key pushes (the surrounding ring);
 --                          keys between the rings interpolate between the two.
+--   mash_nudge_repeat      whether holding a nudge key keeps nudging, the way a
+--                          held key keeps typing. A tap gives exactly one push.
+--   mash_nudge_delay_ms    wait before the first repeat, so a slow tap is still
+--                          one nudge
+--   mash_nudge_rate_ms     and how often it repeats after that
 --   mash_grip              whether a key still held at the end of a swipe grips
 --                          the ball. On, the cursor stops and the momentum bleeds
 --                          away, so letting go does not resume the swipe. Off, the
@@ -83,6 +88,9 @@ MOUSEKEYS = {
   mash_nudge = true,
   mash_nudge_inner = 1,
   mash_nudge_outer = 5,
+  mash_nudge_repeat = true,
+  mash_nudge_delay_ms = 250,
+  mash_nudge_rate_ms = 90,
   mash_grip = false,
   mash_grip_friction = 12,
   mash_debug_strategies = "cpa,lsq,pca,ewma",

@@ -260,6 +260,22 @@ U       between   (-4,-1)     4.12px
 Y       outer     (-5,-1)     5.10px
 ```
 
+**Held rather than tapped, a nudge repeats** — the same push over and over, so the
+grid can be leaned on for a longer adjustment. The first repeat waits
+`mash_nudge_delay_ms` (250ms), as a held key does, so a slow tap is still exactly
+one nudge; after that it goes every `mash_nudge_rate_ms` (90ms).
+
+```
+quick tap on 7        moved (-4,-3)            one nudge
+hold 7 for 1.2s       (-12,-9) -> (-82,-58)    repeats, stops on release
+repeat off, hold O    moved (+1,-1)            one nudge only
+```
+
+Each repeat is confirmed by asking whether that key is still down, rather than
+assumed until a release arrives — the same reason the grip polls. A repeat is the
+same key still held, not a new press, so it does not enter the cluster or disturb
+what a fit would see.
+
 The nudge fires on the opening press of a cluster rather than waiting to confirm
 the tap stayed alone — waiting would put 200ms of delay on the one gesture that
 exists to be precise. A sweep that follows keeps the pixel or two already pushed,

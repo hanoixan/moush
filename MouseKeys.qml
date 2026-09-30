@@ -115,6 +115,12 @@ Item {
   property var nudgeInnerNames: []            // action names, published by bindings.lua
   property var nudgeOuterNames: []
   property string nudgeName: ""               // the key the last nudge came from
+  // Held rather than tapped, a nudge repeats — the same push, over and over, so
+  // the grid can be leaned on for a longer adjustment. Confirmed by asking whether
+  // the key is still down, since a release is not reliably delivered.
+  property bool nudgeRepeat: true
+  property int nudgeDelayMs: 250              // first repeat, as a key would
+  property int nudgeRateMs: 90                // and every this often after
   property bool mashGrip: false               // grip the ball while a key is held
   property real mashGripFriction: 12          // e-folds/s bled off while gripped
   readonly property int holdCheckMs: 50       // quiet for this long, then ask
@@ -321,6 +327,8 @@ Item {
       + " nudge=" + root.mashNudge + "/" + root.nudgeInnerPx + "-" + root.nudgeOuterPx
       + " rings=" + root.nudgeInnerNames.length + "/" + root.nudgeOuterNames.length
       + " nudged=" + (root.nudgeName === "" ? "-" : root.nudgeName)
+      + " rep=" + root.nudgeRepeat + "/" + root.nudgeDelayMs + "/" + root.nudgeRateMs
+      + (nudgePoll.running ? "*" : "")
       + " gripOn=" + root.mashGrip + "/" + root.mashGripFriction.toFixed(0)
       + " grip=" + root.ballHeld
       + " cluster=" + root.clusterN + " win=" + root.mashTrail.length
@@ -1146,6 +1154,23 @@ Item {
     root.pokeIdle()
     root.warp(root.curX + (dx / d) * px, root.curY + (dy / d) * px)
     if (root.mashDebug) dbgTimer.start()
+    if (root.nudgeRepeat) {
+      nudgePoll.interval = root.nudgeDelayMs   // the first one waits, as a key does
+      nudgePoll.restart()
+    }
+  }
+
+  // Repeat the push the current nudge key stands for, without disturbing the
+  // cluster: a repeat is the same key still down, not a new press.
+  function nudgeAgain() {
+    var g = root.nudgeGeom(), q = root.mashPos(root.nudgeName)
+    if (!g || !q) { nudgePoll.stop(); return }
+    var dx = q.x - g.cx, dy = q.y - g.cy
+    var d = Math.sqrt(dx * dx + dy * dy)
+    if (!(d > 0)) { nudgePoll.stop(); return }
+    var px = root.nudgePixels(root.nudgeName, g, d)
+    root.pokeIdle()
+    root.warp(root.curX + (dx / d) * px, root.curY + (dy / d) * px)
   }
 
   function mashPress(name, now) {
@@ -1160,6 +1185,7 @@ Item {
       root.dbgStrats = ({}); root.dbgHits = []; root.dbgVecs = []
       root.dbgDriveAt = 0; root.dbgDriveX = 0; root.dbgDriveY = 0
       root.nudgeName = ""
+      nudgePoll.stop()
       root.clusterN = 0
     }
     root.clusterN += 1
@@ -1176,7 +1202,10 @@ Item {
     // The overlay shows exactly what the fit is working from: the same last
     // mashSamples events, so a key that has aged out of the window goes back to
     // looking untouched rather than implying it still counts.
-    if (root.clusterN > 1) root.nudgeName = ""     // a sweep, not a nudge
+    if (root.clusterN > 1) {                       // a sweep, not a nudge
+      root.nudgeName = ""
+      nudgePoll.stop()
+    }
     root.dbgHits = root.dbgHits.concat([{ name: name, t: now }]).slice(-root.mashSamples)
     root.dbgLastAt = now
     if (hist.length >= 3) {
@@ -1515,7 +1544,10 @@ Item {
       + '.. " mash_nudge_inner=" .. tostring(m.mash_nudge_inner or "") '
       + '.. " mash_nudge_outer=" .. tostring(m.mash_nudge_outer or "") '
       + '.. " mash_inner=" .. tostring(((m.keys or {}).mash or {}).inner or "") '
-      + '.. " mash_outer=" .. tostring(((m.keys or {}).mash or {}).outer or "")']
+      + '.. " mash_outer=" .. tostring(((m.keys or {}).mash or {}).outer or "") '
+      + '.. " mash_nudge_repeat=" .. tostring(m.mash_nudge_repeat) '
+      + '.. " mash_nudge_delay_ms=" .. tostring(m.mash_nudge_delay_ms or "") '
+      + '.. " mash_nudge_rate_ms=" .. tostring(m.mash_nudge_rate_ms or "")']
     stdout: StdioCollector {
       // "fast_tap_ms=135 carry_ms=135" — named pairs so adding a knob is one term
       // here and one in bindings.lua, and a missing one just keeps its default.
@@ -1546,11 +1578,13 @@ Item {
             root.mashLabels = lm
             continue
           }
-          if (kv[0] === "mash_grip" || kv[0] === "mash_nudge") {
+          if (kv[0] === "mash_grip" || kv[0] === "mash_nudge"
+              || kv[0] === "mash_nudge_repeat") {
             if (kv[1] !== "true" && kv[1] !== "false") continue
             var on = (kv[1] === "true")
             if (kv[0] === "mash_grip") root.mashGrip = on
-            else root.mashNudge = on
+            else if (kv[0] === "mash_nudge") root.mashNudge = on
+            else root.nudgeRepeat = on
             continue
           }
           if (kv[0] === "mash_inner" || kv[0] === "mash_outer") {
@@ -1583,6 +1617,10 @@ Item {
           } else if (kv[0] === "mash_samples" && v !== root.mashSamples) {
             root.mashSamples = v
             root.log("mashSamples <- " + v + " (bindings.lua)")
+          } else if (kv[0] === "mash_nudge_delay_ms") {
+            root.nudgeDelayMs = v
+          } else if (kv[0] === "mash_nudge_rate_ms") {
+            root.nudgeRateMs = v
           }
         }
       }
@@ -1658,6 +1696,38 @@ Item {
       }
       root.pokeIdle()
       root.warp(root.curX + root.ballVX * dt, root.curY + root.ballVY * dt)
+    }
+  }
+
+  Timer {
+    id: nudgePoll
+    interval: root.nudgeDelayMs
+    repeat: true
+    onTriggered: {
+      if (!root.active || !root.mashNudge || !root.nudgeRepeat
+          || root.keymap !== "mash" || root.nudgeName === "") {
+        nudgePoll.stop(); return
+      }
+      if (!nudgeProbe.running) nudgeProbe.running = true
+    }
+  }
+
+  // Asks about the one key the nudge came from. Its name comes from the labels
+  // bindings.lua already publishes, so the spelling stays in the one place that
+  // knows it.
+  Process {
+    id: nudgeProbe
+    command: ["hyprctl", "repl",
+      'local s = "' + (root.mashLabels[root.nudgeName] || "") + '" '
+      + 'if s == "" then return "false" end '
+      + 'for _, n in ipairs({ s, s:lower(), s:sub(1,1):upper() .. s:sub(2):lower() }) do '
+      + 'if hl.is_key_down(n) then return "true" end end return "false"']
+    stdout: StdioCollector {
+      onStreamFinished: {
+        if (String(text).indexOf("true") < 0) { nudgePoll.stop(); return }
+        root.nudgeAgain()
+        nudgePoll.interval = root.nudgeRateMs   // past the first, repeat faster
+      }
     }
   }
 

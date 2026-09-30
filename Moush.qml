@@ -306,6 +306,9 @@ Item {
   property string holdMod: ""                 // ...and on the press that began this hold
   property bool clusterExtent: false          // this swipe has already taken its edge
   property bool scrollFine: false             // scrolling without the ramp
+  property var scrollDir: [0, 1]              // the direction the current hold scrolls
+  property real scrollWant: 0                 // notches this swipe has asked for
+  property real scrollSent: 0                 // ...and how many it has actually sent
   property real scrollAcc: 0
   property real mashLastAt: 0
 
@@ -343,6 +346,7 @@ Item {
       + " wheel=" + root.wheelHeld + " mod=" + (root.lastMod || "-") + " btn=" + root.btnHeld
       + " ultra=" + root.scrollUltra
       + " sreps=" + root.scrollReps + "/" + root.scrollDets
+      + " snet=" + root.scrollSent
       + " sscale=" + (root.scrollHoldName === "" ? "-"
           : root.scrollScaleAt(Date.now() - root.scrollHoldAt).toFixed(2))
       + " carryGap=" + Math.round(root.carryGap) + " carried=" + root.carried
@@ -490,12 +494,6 @@ Item {
     if (det === 0) return
     root.scrollAcc -= det * root.mashScrollPx
     root.scroll(det)
-  }
-
-  // A discrete press is worth a notch outright: accumulating an 8px step against
-  // a notch's 90 would take a dozen presses to move the page once.
-  function scrollPress(dir, notches) {
-    root.scroll(root.scrollSign(dir[0], dir[1]) * notches)
   }
 
   // Flat while the hold is young, then a straight ramp, then flat at the top.
@@ -935,6 +933,7 @@ Item {
       root.scrollHoldName = name; root.scrollHoldAt = now
       root.scrollFrac = 0; root.scrollReps = 0; root.scrollDets = 0
       root.scrollUltra = true; root.scrollFine = false
+      root.scrollDir = dir
       root.scrollRepeat(name, dir, now)
       scrollTimer.interval = root.scrollRepeatMs
       scrollTimer.restart(); scrollKeyPoll.restart()
@@ -959,6 +958,7 @@ Item {
       root.dbgDriveAt = 0; root.dbgDriveX = 0; root.dbgDriveY = 0
       root.clusterN = 0
       root.clusterExtent = false
+      root.scrollWant = 0; root.scrollSent = 0
     }
     root.clusterN += 1
     root.mashLastAt = now
@@ -1114,6 +1114,9 @@ Item {
       // A held key is not a new press, so repeats are settled before anything else
       // looks at this press.
       if (repeat) {
+        if (root.wheelHeld && root.scrollHoldName === gname) {
+          root.scrollRepeat(gname, root.scrollDir, now); return
+        }
         if (root.wheelHeld && mdir) { root.scrollRepeat(gname, mdir, now); return }
         if (mdir && root.activeKind === "move") {
           root.lastDownAt = now
@@ -1144,21 +1147,53 @@ Item {
         }
       }
 
-      if (mdir && root.wheelHeld) {
+      if (root.wheelHeld) {
         // The key that asked for top speed is still down. Its first auto-repeat
         // arrives 250ms later, too late to count as a repeat, and would otherwise
         // read as a fresh press and quietly downgrade the scroll it just started.
         if (root.scrollUltra && gname === root.scrollHoldName) return
 
-        // Wheel mode owns the steering keys. Coarse asks at once for the size the
-        // ramp would otherwise climb to; fine turns the ramp off altogether.
+        // A swipe scrolls the way the swipe runs, not the way its individual keys
+        // point. Reading each key's own direction made swiping up and swiping down
+        // both scroll up: a vertical swipe passes through a sideways key, and with
+        // one scroll axis that key reads as positive whichever way the swipe went.
+        // A lone press has no swipe to read, so it uses its own direction.
+        var sdir = null
+        var t = root.mashTrail
+        if (t.length >= 2) {
+          var vx = t[t.length - 1].x - t[0].x, vy = t[t.length - 1].y - t[0].y
+          if (vx * vx + vy * vy > 0) sdir = [vx, vy]
+        }
+        if (!sdir) sdir = mdir
+
+        // Coarse asks at once for the size the ramp would otherwise climb to; fine
+        // turns the ramp off altogether.
         var notches = mod === "c" ? Math.max(1, Math.round(root.scrollRepeatScaleMax)) : 1
+
+        // Counted before the direction is known, so every press of a swipe is worth
+        // the same. Counting only the presses that could scroll made a swipe that
+        // opens on a key with no direction of its own come out one notch short of
+        // the same swipe run backwards, which then did not undo it.
+        root.scrollWant += notches
+        if (!sdir) return            // no direction yet; the next press pays for it
         root.scrollHoldName = gname; root.scrollHoldAt = now
+        root.scrollDir = sdir
         root.scrollFrac = 0; root.scrollReps = 0; root.scrollDets = notches
         root.scrollUltra = false
         root.scrollFine = (mod === "f")
         root.pokeIdle()
-        root.scrollPress(mdir, notches)
+
+        // The first press of a swipe has no swipe to read yet, so it scrolls by its
+        // own key, which is usually the opposite way to the swipe that follows it.
+        // Left alone that cancels: M then I sent one notch down and then one up, and
+        // a two-key swipe scrolled nowhere at all. So the swipe keeps books. It
+        // tracks what it has asked for against what it has sent, and each press
+        // sends the difference, which silently undoes the wrong-way nudge.
+        var want = root.scrollSign(sdir[0], sdir[1]) * root.scrollWant
+        var emit = want - root.scrollSent
+        root.scrollSent = want
+        if (emit !== 0) root.scroll(emit)
+
         scrollTimer.interval = root.scrollStartMs
         scrollTimer.restart(); scrollKeyPoll.restart()
         return

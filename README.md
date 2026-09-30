@@ -190,6 +190,8 @@ base rate at once and stays there while you keep the last key of the swipe down.
 
 **Every direction scrolls one axis.** Up and right both scroll one way, down and
 left the other, so whichever keys fall under your fingers the sense is the same.
+A swipe scrolls the way the swipe runs, not the way its individual keys point, so
+passing over a sideways key on the way up does not push back against you.
 
 ## The display
 
@@ -292,14 +294,31 @@ mash_vmax    = 1000,   -- its top speed, which sets the longest roll
 mash_samples = 4,      -- how many recent presses the direction is read from
 ```
 
-`mash_gain` is the one to reach for. It sets how much speed a press adds, and it
-grows steeply, so a change is felt far more at the fast end than the slow end. At
-the shipped value of 20 almost any real mash hits the `mash_vmax` ceiling, which is
-why distance follows how far your hand travelled rather than how fast it moved.
-Lower it and speed starts to matter: at `0.01`, the same four presses travelled
-16 px when mashed slowly and 43 px when mashed quickly.
+`mash_gain` is the one to reach for, and it is worth understanding, because it
+decides whether swiping faster does anything at all.
 
-`mash_vmax` sets the longest possible roll. Raise it for bigger screens.
+Each press adds speed, growing steeply with how fast you swipe, and the ball is
+then capped at `mash_vmax`. Set the gain high and even a leisurely swipe is already
+past the cap, so every swipe travels the same distance and swiping harder changes
+nothing. Set it low and the whole range fits under the cap, so speed comes through.
+The same four-key swipe, measured at three speeds:
+
+```
+gain    slow     medium   fast     spread
+        170ms    110ms    60ms
+20       521px    519px    433px   1.2x   speed does nothing
+ 2       104px    510px    469px   4.9x   only the slowest is distinct
+ 0.5      60px    226px    427px   7.1x   responds across the range
+ 0.15     42px     79px    230px   5.5x   responsive, but short
+ 0.05     16px     41px     84px   5.2x   too short to cross a screen
+```
+
+Around `0.5` is where a swipe answers to how fast you make it while still crossing
+a useful distance at speed. Higher values trade that away for a constant, long
+throw.
+
+`mash_vmax` is the ceiling itself, and so the longest possible roll. Raise it along
+with the gain if you want the fast end to reach further.
 
 ### How scrolling feels
 

@@ -107,7 +107,7 @@ Item {
   // the compositor, because a release event cannot be relied on: once two bound
   // keys are held Hyprland delivers neither key's release, and a missed one would
   // leave the ball gripped for the rest of the session.
-  property bool mashGrip: true                // grip the ball while a key is held
+  property bool mashGrip: false               // grip the ball while a key is held
   property real mashGripFriction: 12          // e-folds/s bled off while gripped
   readonly property int holdCheckMs: 50       // quiet for this long, then ask
   readonly property int holdPollMs: 70        // ...and keep asking while it is held

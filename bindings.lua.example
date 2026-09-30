@@ -73,7 +73,7 @@ MOUSEKEYS = {
   mash_gain = 20,
   mash_vmax = 1000,
   mash_samples = 4,
-  mash_grip = true,
+  mash_grip = false,
   mash_grip_friction = 12,
   mash_debug_strategies = "cpa,lsq,pca,ewma",
 }

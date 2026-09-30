@@ -231,14 +231,17 @@ cluster are averaged, weighted by length, into one drive vector,
 so longer hops count for more and a mash that reverses cancels itself out.
 
 **A finger still on a key is a hand still on the ball.** If a swipe ends without
-lifting every key, the ball is *gripped*: it neither moves nor decays, and letting
-go rolls it on from exactly the momentum it was caught with.
+lifting every key, the ball is *gripped*: the cursor stops, and the momentum bleeds
+away rather than being stored. Letting go does not resume the swipe.
+
+Grip friction (`mashGripFriction`, 12 e-folds/second) is well above rolling
+friction, because holding on is meant to stop the cursor rather than slow it
+gently — a couple of hundred milliseconds leaves nothing to continue with.
 
 ```
-gripped   +0.4s  x=311  grip=true   ball=745,0
-          +1.6s  x=311  grip=true   ball=745,0     no motion, no decay
-released  +0.35s x=487  grip=false  ball=204,0
-          +1.05s x=550  grip=false  ball=9,0       rolled on +239px
+gripped   +0.35s x=307  grip=true   ball=2,0
+          +1.05s x=307  grip=true   ball=0,0       stopped, momentum gone
+released  +1.05s x=307  grip=false  ball=0,0       +0px: the swipe is over
 ```
 
 This is polled rather than driven by key releases, because a release cannot be

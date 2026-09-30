@@ -107,6 +107,7 @@ Item {
   // the compositor, because a release event cannot be relied on: once two bound
   // keys are held Hyprland delivers neither key's release, and a missed one would
   // leave the ball gripped for the rest of the session.
+  readonly property real mashGripFriction: 12  // e-folds/s bled off while gripped
   readonly property int holdCheckMs: 50       // quiet for this long, then ask
   readonly property int holdPollMs: 70        // ...and keep asking while it is held
 
@@ -1519,9 +1520,20 @@ Item {
       var now = Date.now()
       var dt = Math.min(0.1, Math.max(0.001, (now - root.lastTickAt) / 1000))
       root.lastTickAt = now
-      // Still gripped: hold the momentum rather than spending it. Neither moving
-      // nor decaying, so letting go rolls on from exactly where it was caught.
-      if (root.ballHeld) return
+      // Still gripped: a hand on the ball bleeds the spin off rather than storing
+      // it, so the momentum decays while held and letting go does not resume the
+      // swipe. Grip friction is well above rolling friction — holding on is meant
+      // to stop the cursor, not to slow it gently — so a grip of a couple of
+      // hundred milliseconds leaves nothing to continue with. The cursor does not
+      // move meanwhile; only the momentum drains.
+      if (root.ballHeld) {
+        var gd = Math.exp(-root.mashGripFriction * dt)
+        root.ballVX *= gd
+        root.ballVY *= gd
+        if (Math.sqrt(root.ballVX * root.ballVX + root.ballVY * root.ballVY) < 1)
+          root.ballStop()
+        return
+      }
       // Quiet for a moment with the ball still rolling is when a held key would
       // matter, so that is when it gets asked about — not on every press, which
       // would be a subprocess per tap.

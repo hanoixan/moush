@@ -5,7 +5,7 @@ import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 
-// Mouse keys: drive the pointer from the keyboard.
+// Moush: drive the pointer from the keyboard.
 //
 // The mode is a grid of keys under one hand. Mashing across them rolls the
 // pointer like a trackball; a key struck alone steps in its own direction with
@@ -38,7 +38,7 @@ Item {
   property var shell: null
   property var manifest: null
 
-  function log(msg) { if (root.debug) console.warn("[mousekeys] " + msg) }
+  function log(msg) { if (root.debug) console.warn("[moush] " + msg) }
   readonly property bool debug: false
 
   // ---- actions ---------------------------------------------------------------
@@ -123,7 +123,7 @@ Item {
 
   property string mode: "mash"
   property var modeNames: ["mash"]
-  readonly property string statePath: Quickshell.statePath("mousekeys.json")
+  readonly property string statePath: Quickshell.statePath("moush.json")
 
   function loadState(text) {
     try {
@@ -146,7 +146,7 @@ Item {
     root.dbgStrats = ({})
     root.dbgDriveAt = 0
     root.dbgAux = ({})
-    if (root.opened) root.hypr('hl.dsp.submap("mousekeys-' + root.mode + '")')
+    if (root.opened) root.hypr('hl.dsp.submap("moush-' + root.mode + '")')
     root.saveState()
     settings.running = true                   // the new mode brings its own keys
     root.log("mode -> " + root.mode)
@@ -365,7 +365,7 @@ Item {
     settings.running = true
     root.refreshState()
     root.collectEdges()
-    root.hypr('hl.dsp.submap("mousekeys-' + root.mode + '")')
+    root.hypr('hl.dsp.submap("moush-' + root.mode + '")')
     root.opened = true
   }
 
@@ -1626,7 +1626,7 @@ Item {
 
   Process {
     id: settings
-    command: ["hyprctl", "repl", 'return MOUSEKEYS_SETTINGS("' + root.mode + '")']
+    command: ["hyprctl", "repl", 'return MOUSH_SETTINGS("' + root.mode + '")']
     stdout: StdioCollector { onStreamFinished: root.onSettings(text) }
   }
 
@@ -1660,18 +1660,18 @@ Item {
     delegate: QtObject {
       required property string modelData
       readonly property var shortcut: GlobalShortcut {
-        appid: "mousekeys"
+        appid: "moush"
         name: modelData
-        description: "Mouse keys: " + modelData
+        description: "Moush: " + modelData
         onPressed: root.handleAction(modelData)
       }
     }
   }
 
   GlobalShortcut {
-    appid: "mousekeys"
+    appid: "moush"
     name: "toggle"
-    description: "Mouse keys (Super + M)"
+    description: "Moush (Super + M)"
     onPressed: root.chordPressed()
     onReleased: root.chordReleased()
   }
@@ -1689,7 +1689,7 @@ Item {
     exclusionMode: ExclusionMode.Ignore
     mask: Region {}                           // visual only: never block a click
 
-    WlrLayershell.namespace: "mousekeys"
+    WlrLayershell.namespace: "moush"
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 

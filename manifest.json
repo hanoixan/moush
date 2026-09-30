@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "id": "mousekeys",
-  "name": "Mouse Keys",
+  "id": "moush",
+  "name": "Moush",
   "version": "1.0.0",
   "author": "hanoixan",
   "description": "Keyboard-driven pointer control: move, click and scroll without a mouse",
@@ -10,6 +10,6 @@
   ],
   "keepLoaded": true,
   "entryPoints": {
-    "overlay": "MouseKeys.qml"
+    "overlay": "Moush.qml"
   }
 }

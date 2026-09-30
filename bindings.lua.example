@@ -1,11 +1,11 @@
--- Mouse keys: SUPER + M enters. A short press starts the session when the chord
+-- Moush: SUPER + M enters. A short press starts the session when the chord
 -- is released and it exits after 2s idle; holding it past 500ms starts the
 -- session right then and latches until you hit SUPER + M again.
 --
 -- Everything the plugin knows about keys lives here. Each mode is a submap and a
 -- key layout; TAB moves between them and the choice persists. Tunables sit at the
 -- top level and any mode may override one by naming it.
-MOUSEKEYS = {
+MOUSH = {
   -- ---- timing ------------------------------------------------------------
   fast_tap_ms = 135,   -- re-press the same key quicker than this to double-tap
   carry_ms    = 175,   -- press a direction this soon after another to keep its speed
@@ -85,8 +85,8 @@ MOUSEKEYS = {
 -- The plugin asks for its settings through this, so the merge of a mode's
 -- overrides onto the top-level defaults happens once, here, rather than being
 -- reimplemented on the other side.
-function MOUSEKEYS_SETTINGS(mode)
-  local m = MOUSEKEYS
+function MOUSH_SETTINGS(mode)
+  local m = MOUSH
   local md = (m.modes or {})[mode] or {}
   local function g(k)
     if md[k] ~= nil then return md[k] end
@@ -132,28 +132,28 @@ function MOUSEKEYS_SETTINGS(mode)
   return table.concat(out, " ")
 end
 
-hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
-  { submap_universal = true, description = "Mouse keys" })
+hl.bind("SUPER + M", hl.dsp.global("moush:toggle"),
+  { submap_universal = true, description = "Moush" })
 
 -- Mouse mode binds each key once per modifier combination that should reach it.
 -- SUPER and ALT are deliberately absent, so a key held with either matches nothing
 -- here and goes to the focused application instead. ignore_mods cannot express
 -- that: it fires whatever is held, and an explicit "SUPER + key" no-op alongside
 -- it loses to it, in either declaration order.
-local mousekeys_mods = { "", "SHIFT + ", "CTRL + ", "SHIFT + CTRL + " }
+local moush_mods = { "", "SHIFT + ", "CTRL + ", "SHIFT + CTRL + " }
 
-local function mousekeys_bind(key, dispatcher, opts)
+local function moush_bind(key, dispatcher, opts)
   -- A mode may leave any of these out, and nil must skip rather than throw: an
   -- error here aborts the whole submap callback, silently losing every bind after
   -- the missing one.
   if key == nil or key == "" then return end
-  for _, m in ipairs(mousekeys_mods) do
+  for _, m in ipairs(moush_mods) do
     hl.bind(m .. key, dispatcher, opts)
   end
 end
 
-local function mousekeys_mode(name, cfg)
-  hl.define_submap("mousekeys-" .. name, function()
+local function moush_mode(name, cfg)
+  hl.define_submap("moush-" .. name, function()
     hl.bind("CTRL + ALT + Escape", hl.dsp.submap("reset"))   -- emergency exit
 
     -- Grid keys are named by index, not by position, so the layout above can use
@@ -161,23 +161,23 @@ local function mousekeys_mode(name, cfg)
     -- Repeating, so holding a direction key sweeps as an arrow would; the plugin
     -- reads a repeat as the same key still down rather than a fresh point.
     for i, e in ipairs(cfg.keys or {}) do
-      mousekeys_bind(e[1], hl.dsp.global("mousekeys:k" .. (i - 1)), { repeating = true })
+      moush_bind(e[1], hl.dsp.global("moush:k" .. (i - 1)), { repeating = true })
     end
 
     local b = cfg.buttons or {}
-    mousekeys_bind(b.lmb, hl.dsp.global("mousekeys:lmb"), {})
-    mousekeys_bind(b.mmb, hl.dsp.global("mousekeys:mmb"), {})
-    mousekeys_bind(b.rmb, hl.dsp.global("mousekeys:rmb"), {})
-    mousekeys_bind(cfg.wheel, hl.dsp.global("mousekeys:wheel"), {})
-    mousekeys_bind(cfg.fine, hl.dsp.global("mousekeys:fine"), { repeating = true })
-    mousekeys_bind(cfg.cycle, hl.dsp.global("mousekeys:cycle"), {})
-    mousekeys_bind(cfg.debug, hl.dsp.global("mousekeys:debug"), {})
-    mousekeys_bind(cfg.strategy, hl.dsp.global("mousekeys:strategy"), {})
+    moush_bind(b.lmb, hl.dsp.global("moush:lmb"), {})
+    moush_bind(b.mmb, hl.dsp.global("moush:mmb"), {})
+    moush_bind(b.rmb, hl.dsp.global("moush:rmb"), {})
+    moush_bind(cfg.wheel, hl.dsp.global("moush:wheel"), {})
+    moush_bind(cfg.fine, hl.dsp.global("moush:fine"), { repeating = true })
+    moush_bind(cfg.cycle, hl.dsp.global("moush:cycle"), {})
+    moush_bind(cfg.debug, hl.dsp.global("moush:debug"), {})
+    moush_bind(cfg.strategy, hl.dsp.global("moush:strategy"), {})
 
     for _, key in ipairs(cfg.inert or {}) do
-      mousekeys_bind(key, hl.dsp.global("mousekeys:noop"), {})
+      moush_bind(key, hl.dsp.global("moush:noop"), {})
     end
   end)
 end
 
-for name, cfg in pairs(MOUSEKEYS.modes) do mousekeys_mode(name, cfg) end
+for name, cfg in pairs(MOUSH.modes) do moush_mode(name, cfg) end

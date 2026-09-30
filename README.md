@@ -1,4 +1,4 @@
-# Mouse Keys — an Omarchy Quattro overlay plugin
+# Moush — an Omarchy Quattro overlay plugin
 
 Drive the pointer from the keyboard: move, click and scroll without a mouse.
 
@@ -110,7 +110,7 @@ Everything a mode owns is declared under that mode, so two modes can differ in
 every key:
 
 ```lua
-MOUSEKEYS = {
+MOUSH = {
   fast_tap_ms = 135,   -- re-press the same key quicker than this to double-tap
   carry_ms    = 175,   -- press a direction this soon after another to keep its speed
 
@@ -158,7 +158,7 @@ out. Re-measuring for a differently staggered keyboard — or an ortholinear one
 where every offset is 0 — is an edit to `keys` and nothing else.
 
 **The plugin never sees a keysym for the grid.** Each entry is bound to
-`mousekeys:k<index>`, and the plugin reads coordinates out of the settings string
+`moush:k<index>`, and the plugin reads coordinates out of the settings string
 by index. Keysyms appear only where the plugin has to *ask* whether a key is still
 down — the wheel, fine, the buttons, a sustained sweep — and those are published
 to it as settings for exactly that purpose, because `is_key_down` wants exact X
@@ -175,13 +175,13 @@ key reaching `hl.bind` throws on the string concatenation, and the throw aborts 
 **whole submap callback** — so leaving out `mmb` did not cost a middle button, it
 silently cost every bind declared after it, including `Tab`. The mode loaded, moved
 the cursor, clicked, and simply could not be left. Nothing was logged. So
-`mousekeys_bind` returns early on a nil or empty key, and `MOUSEKEYS_SETTINGS`
+`moush_bind` returns early on a nil or empty key, and `MOUSH_SETTINGS`
 publishes an empty string rather than the word `nil` for one, which the plugin's
 key-down check already reads as "no such key".
 
 **Global tunables can be overridden per mode.** Anything at the top level of
-`MOUSEKEYS` — the timings, `mash_gain`, the scroll ramp — may be restated inside a
-mode, and `MOUSEKEYS_SETTINGS(mode)` merges the two before handing the result over.
+`MOUSH` — the timings, `mash_gain`, the scroll ramp — may be restated inside a
+mode, and `MOUSH_SETTINGS(mode)` merges the two before handing the result over.
 So a left-hand mode can have its own gain without duplicating everything else.
 
 Timings live in `bindings.lua` too, so the keys and the behaviour that depends on
@@ -193,7 +193,7 @@ auto-repeat would read as a deliberate re-press. The two are independent and sta
 out equal only by coincidence.
 
 **Adding a mode** is one more entry in `modes`. The plugin dispatches
-`hl.dsp.submap("mousekeys-<name>")`, and the loop at the bottom of the block
+`hl.dsp.submap("moush-<name>")`, and the loop at the bottom of the block
 defines a submap per entry, so a name always has a submap behind it. **Tab cycles
 them in alphabetical order** — Lua's `pairs` has no defined order, so the names are
 sorted before being published rather than left to chance; `mash` coming first is
@@ -207,7 +207,7 @@ needs the chord's **keysyms** as well as the bind. Those live in `shell.json`,
 which is where Omarchy keeps plugin settings:
 
 ```json
-{ "id": "mousekeys", "chordKey": ["b"], "chordMods": ["Super_L", "Super_R"] }
+{ "id": "moush", "chordKey": ["b"], "chordMods": ["Super_L", "Super_R"] }
 ```
 
 Either list may hold several syms and any one counts — that is how `Super_L` and
@@ -217,7 +217,7 @@ and the bind still works, but every press latches: the poll never sees the chord
 go up.
 
 `Tab` cycles through the modes. The active one is written to
-`$XDG_STATE_HOME/quickshell/by-shell/<id>/mousekeys.json` and restored on load;
+`$XDG_STATE_HOME/quickshell/by-shell/<id>/moush.json` and restored on load;
 its name flashes under the cursor on entry and after each Tab.
 
 The pointer's position is drawn as a **translucent red disk** (`markerSize`,
@@ -319,7 +319,7 @@ cluster; until then a press moves the cursor by the `mashStepPx` floor and nothi
 more.
 
 ```lua
-MOUSEKEYS = {
+MOUSH = {
   mash_strategy = "lsq",             -- steers the pointer
   mash_gain = 20,                    -- how hard each press shoves it
   mash_vmax = 1000,                  -- ceiling, and so the longest throw
@@ -887,7 +887,7 @@ of the dead zone described next.
   So auto-scroll cannot ride repeats like movement does — the plugin would have
   no evidence the key is still down. Each scroll key therefore carries a second,
   `release = true` bind that runs
-  `omarchy-shell -q shell call mousekeys scrollstop ''`. That is the one place
+  `omarchy-shell -q shell call moush scrollstop ''`. That is the one place
   `exec_cmd` earns its keep: it is the only bind form that fires on release, and
   it lands in ~35ms — inside a single detent, so scrolling stops where you let
   go. Auto-scroll also self-caps at `scrollMaxMs` (8s) in case a release is ever
@@ -971,27 +971,27 @@ one is enough.
 
 ## Install
 
-1. Clone into `~/.config/omarchy/plugins/mousekeys/` — the directory name must
+1. Clone into `~/.config/omarchy/plugins/moush/` — the directory name must
    match the manifest `id`, which is how `omarchy plugin add` names its clone.
-   Note the GlobalShortcut **appid** (also `mousekeys`) is a separate identifier
+   Note the GlobalShortcut **appid** (also `moush`) is a separate identifier
    from the plugin id, and every binding below references it — change one
    without the other and all the bindings silently stop working.
-2. Copy the folder to `~/.config/omarchy/plugins/mousekeys/`.
+2. Copy the folder to `~/.config/omarchy/plugins/moush/`.
 3. Check it, then load and enable it:
 
    ```bash
-   omarchy plugin validate ~/.config/omarchy/plugins/mousekeys
+   omarchy plugin validate ~/.config/omarchy/plugins/moush
    omarchy-shell shell rescanPlugins
-   omarchy plugin enable mousekeys
+   omarchy plugin enable moush
    ```
 
    `validate` only checks `manifest.json` — it never loads the QML. Set
-   `debug: true` in `MouseKeys.qml` to trace keys (the log is at
+   `debug: true` in `Moush.qml` to trace keys (the log is at
    `/run/user/$UID/quickshell/by-id/<id>/log.qslog`, read it with
    `quickshell log <file>`), or ask the running plugin for its state:
 
    ```bash
-   omarchy-shell shell call mousekeys probe ""
+   omarchy-shell shell call moush probe ""
    # opened=true active=true sticky=false mode=mash modes=[mash,mash-lh] keys=17
    ```
 
@@ -1004,7 +1004,7 @@ Saving files under `~/.config/omarchy/plugins/` hot-reloads most edits, but a
 A latched session has no timeout and no Escape, so **Super + M is its only
 exit**. `CTRL + ALT + Escape` restores your keybindings if the shell dies
 holding the submap, but the overlay keeps its surface until
-`omarchy-shell shell hide mousekeys`.
+`omarchy-shell shell hide moush`.
 
 ## Choosing the chord
 

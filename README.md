@@ -15,13 +15,20 @@ long it lasts:
 Hitting the chord again always exits. While the chord is down and neither has
 happened yet, the session is *armed but inert*: keys do nothing, no marker.
 
-## Keymaps — Tab cycles, and the choice persists
+## Modes — Tab cycles, and the choice persists
 
-|  | move (up/left/down/right) | left btn | middle btn | right btn | scroll up/down |
-|---|---|---|---|---|---|
-| **left** | `i` `j` `k` `l` | `c` | `x` | `z` | `y` / `h` |
-| **right** | `w` `a` `s` `d` | `,` | `.` | `/` | `r` / `f` |
-| **arrows** *(default)* | arrow keys | `d` | `s` | `a` | PgUp / PgDn |
+There is one way to drive the pointer — **mash**, described below — and modes are
+alternative key layouts for it. Two ship, and they are identical until you change
+one: `mash` for the right hand, and `mash-lh` as a starting point for the left.
+
+```
+ 7 8 9 0 -          7 (held) wheel mode     tab  next mode
+Y U I O P [         8 9 0   left/middle/right click
+ H J K L ; '        - (held) 1px steps      `    the debug display
+  N M , . /         z       next strategy   5 6 R T F G V B A S D W  inert
+```
+
+Everything not listed passes through, so typing still works.
 
 **A button follows its key: down while held, up when let go.** A tap is therefore
 a click and a hold is a drag, which is what selecting text needs. Sending a
@@ -86,66 +93,125 @@ its beginning or end.
 
 ### Remapping any of it
 
-Every key above is configured in `bindings.lua`, not in the plugin. The binds
-name **actions**, never keys: the plugin registers one global shortcut per
-action — `up down left right lmb mmb rmb scrollup scrolldown cycle`, plus
-`toggle` for the chord — and each keymap is a submap that points keys at them.
+Every key is configured in `bindings.lua`, not in the plugin, and the whole
+configuration lives in one table. The binds name **actions**, never keys: the
+plugin registers one global shortcut per action and each mode is a submap that
+points keys at them. Changing a key is an edit there and nothing else — no plugin
+change, no shell restart, just `hyprctl reload`.
 
-So changing a key is a one-line edit with no plugin change and no restart,
-just `hyprctl reload`:
-
-```lua
-mousekeys_map("left", {
-  up = "I", down = "K", left = "J", right = "L",
-  lmb = "C", mmb = "X", rmb = "Z", scrollup = "Y", scrolldown = "H",
-  -- cycle = "TAB",   -- optional; TAB is the default
-})
-```
-
-Adding a fourth keymap is one more `mousekeys_map(...)` call plus its name in
-the cycle order. The order lives in `shell.json`, which is where Omarchy keeps
-plugin settings — inline on the plugin's own entry:
-
-```json
-{ "id": "mousekeys", "keymaps": ["arrows", "left"] }
-```
-
-Timing goes in `bindings.lua` too, so the keys and the behaviour that depends on
-them stay in one file. Hyprland keeps its Lua globals across config loads, so the
-plugin reads this table back over `hyprctl repl` when a session starts — which
-means `hyprctl reload` is enough to apply a change, with no shell restart:
+Everything a mode owns is declared under that mode, so two modes can differ in
+every key:
 
 ```lua
 MOUSEKEYS = {
   fast_tap_ms = 135,   -- re-press the same key quicker than this to double-tap
   carry_ms    = 175,   -- press a direction this soon after another to keep its speed
+
+  modes = {
+    mash = {
+      -- the grid: key, x, y. Any coordinate space you like.
+      keys = { { "Y", 0.00, 1 }, { "U", 1.00, 1 }, { "I", 2.00, 1 },
+               { "O", 3.00, 1 }, { "P", 4.00, 1 }, { "bracketleft", 5.00, 1 },
+               { "H", 0.25, 2 }, { "J", 1.25, 2 }, { "K", 2.25, 2 },
+               ... },
+      -- which of them also steer when struck alone
+      dirs = { I = "up", M = "down", J = "left", K = "right",
+               U = "upleft", O = "upright", N = "downleft", comma = "downright" },
+      buttons = { lmb = "8", mmb = "9", rmb = "0" },
+      wheel = "7", fine = "minus", cycle = "TAB", debug = "grave", strategy = "Z",
+      inert = { "5", "6", "R", "T", "F", "G", "V", "B", "A", "S", "D", "W" },
+    },
+    ["mash-lh"] = { ... },
+  },
 }
 ```
+
+**Coordinates are yours to choose.** The plugin reads the grid as plain numbers and
+only requires that **x increases to the right and y increases downward** — the
+directions a screen already uses, so a mash that goes down-right on the keyboard
+goes down-right on screen. Nothing else is assumed: the origin can sit anywhere,
+the spacing can be whatever matches your keyboard, and units are yours. Speed is
+in *your* units per second and the impulse is cubic in it, so a grid measured in
+tenths rather than key widths wants `mash_gain` scaled to match. Every derived
+quantity — the overlay's extent, the vector lengths, the fitted speed itself —
+is computed from the coordinates actually given.
+
+The defaults are in key widths, quartered, because the real stagger is not
+uniform. The number row sits half a key right of `YUIOP`, and `HJKL` and `NM` are
+a further quarter right again:
+
+```
+ 7 8 9 0 -      +0.50 keys
+Y U I O P [     +0.00
+ H J K L ; '    +0.25
+  N M , . /     +0.75
+```
+
+Quartering keeps a column step and a row step the same distance, so the grid
+measures the way it feels under the hand rather than the way it is easiest to type
+out. Re-measuring for a differently staggered keyboard — or an ortholinear one,
+where every offset is 0 — is an edit to `keys` and nothing else.
+
+**The plugin never sees a keysym for the grid.** Each entry is bound to
+`mousekeys:k<index>`, and the plugin reads coordinates out of the settings string
+by index. Keysyms appear only where the plugin has to *ask* whether a key is still
+down — the wheel, fine, the buttons, a sustained sweep — and those are published
+to it as settings for exactly that purpose, because `is_key_down` wants exact X
+spellings (`i` where the bind says `I`) and answers nil for anything else.
+
+**Any key may be omitted.** A mode with no `wheel` has no wheel mode; a mode with
+no `dirs` is a pure trackball; a mode with only `lmb` has only a left button.
+`inert` is the one list that exists to do nothing: those keys are bound and
+swallowed so a stray strike in the middle of a mash does not type into the window
+underneath.
+
+That needs one guard, and its absence failed in a way worth knowing about. A nil
+key reaching `hl.bind` throws on the string concatenation, and the throw aborts the
+**whole submap callback** — so leaving out `mmb` did not cost a middle button, it
+silently cost every bind declared after it, including `Tab`. The mode loaded, moved
+the cursor, clicked, and simply could not be left. Nothing was logged. So
+`mousekeys_bind` returns early on a nil or empty key, and `MOUSEKEYS_SETTINGS`
+publishes an empty string rather than the word `nil` for one, which the plugin's
+key-down check already reads as "no such key".
+
+**Global tunables can be overridden per mode.** Anything at the top level of
+`MOUSEKEYS` — the timings, `mash_gain`, the scroll ramp — may be restated inside a
+mode, and `MOUSEKEYS_SETTINGS(mode)` merges the two before handing the result over.
+So a left-hand mode can have its own gain without duplicating everything else.
+
+Timings live in `bindings.lua` too, so the keys and the behaviour that depends on
+them stay in one file. Hyprland keeps its Lua globals across config loads, so the
+plugin reads this table back over `hyprctl repl` when a session starts.
 
 `fast_tap_ms` must stay under `input:repeat_delay` (250ms), or a held key's first
 auto-repeat would read as a deliberate re-press. The two are independent and start
 out equal only by coincidence.
 
-Omit it and you get `["left", "right", "arrows"]`. Names must match the
-`mousekeys_map` calls: the plugin dispatches `hl.dsp.submap("mousekeys-<name>")`
-and a name with no submap behind it leaves you in a session that ignores keys.
+**Adding a mode** is one more entry in `modes`. The plugin dispatches
+`hl.dsp.submap("mousekeys-<name>")`, and the loop at the bottom of the block
+defines a submap per entry, so a name always has a submap behind it. **Tab cycles
+them in alphabetical order** — Lua's `pairs` has no defined order, so the names are
+sorted before being published rather than left to chance; `mash` coming first is
+alphabetical, not special-cased.
+
 The entry chord is an ordinary bind at the top of the block, so `SUPER + M` is
 changed the same way — with one extra step. The plugin has to poll whether the
 chord is still held (it is how a short press is told from a long one, see
 [How input actually gets here](#how-input-actually-gets-here-and-why)), so it
-needs the chord's **keysyms** as well as the bind:
+needs the chord's **keysyms** as well as the bind. Those live in `shell.json`,
+which is where Omarchy keeps plugin settings:
 
 ```json
 { "id": "mousekeys", "chordKey": ["b"], "chordMods": ["Super_L", "Super_R"] }
 ```
 
-Either list may hold several syms and any one counts — that is how `Super_L`
-and `Super_R`, and the shifted `M`, are both covered by the defaults
-(`["m", "M"]` and `["Super_L", "Super_R"]`). Set `chordMods` to `[]` for a bare
-key. Get these wrong and the bind still works, but every press latches: the poll
-never sees the chord go up.
+Either list may hold several syms and any one counts — that is how `Super_L` and
+`Super_R`, and the shifted `M`, are both covered by the defaults (`["m", "M"]` and
+`["Super_L", "Super_R"]`). Set `chordMods` to `[]` for a bare key. Get these wrong
+and the bind still works, but every press latches: the poll never sees the chord
+go up.
 
-`Tab` cycles through that list. The active keymap is written to
+`Tab` cycles through the modes. The active one is written to
 `$XDG_STATE_HOME/quickshell/by-shell/<id>/mousekeys.json` and restored on load;
 its name flashes under the cursor on entry and after each Tab.
 
@@ -155,18 +221,9 @@ The pointer's position is drawn as a **translucent red disk** (`markerSize`,
 
 ### mash — a trackball made of keys
 
-`mash` is a fourth keymap with a different idea behind it. Instead of a key per
-direction, the keys form a grid under your right hand, and mashing across them
-rolls the pointer the way dragging a finger rolls a trackball.
-
-```
- 7 8 9 0 -          7 (held) wheel mode     tab  next keymap
-Y U I O P [         8 9 0   left/middle/right click
- H J K L ; '        - (held) 1px steps      `    the debug display
-  N M , . /         z       next strategy   5 6 R T F G V B a s d w  inert
-```
-
-Everything else passes through, so typing still works.
+Instead of a key per direction, the keys form a grid under your hand, and mashing
+across them rolls the pointer the way dragging a finger rolls a trackball. How fast
+you mash decides how far it goes.
 
 **Eight of the grid keys double as directions.** Struck alone, a key steers with
 the arrow keys' own model behind it — `baseStep`, acceleration while held, edge
@@ -222,35 +279,13 @@ cursor exactly. It applies to the discrete step, not to the speed of a sweep. Li
 the wheel key it is polled rather than waited on, since a release is not reliably
 delivered.
 
-**The grid is a binding, not code.** Each position is an action named
-`m<x4>_<y>` — row `y`, column `x4` in quarter-key steps — so `bindings.lua` says
-which physical key sits at which grid point, and the plugin only ever reads
-coordinates out of the action name. Re-measuring the grid for a differently
-staggered keyboard is an edit there and nothing else.
-
-x is in quarters because the real stagger is not uniform. The number row sits half
-a key right of `YUIOP`, and `HJKL` and `NM` are a further quarter right again:
-
-```
- 7 8 9 0 -      +0.50 keys
-Y U I O P [     +0.00
- H J K L ; '    +0.25
-  N M , . /     +0.75
-```
-
-Quartering keeps a column step and a row step the same distance, so the grid
-measures the way it feels under the hand rather than the way it is easiest to
-type out.
-
 **The fit sees the last `mash_samples` (4) presses.** Older ones drop out, so a
 long mash steers by what your hand is doing now rather than by an average over the
-whole gesture. `cpa` keeps three subvectors to match, since five events make three
-overlapping triples.
+whole gesture.
 
 ```
-presses in cluster   2   3   5   6   8
-window               2   3   5   5   5
-cpa subvectors       0   1   3   3   3
+presses in cluster   2   3   4   6   8
+window               2   3   4   4   4
 ```
 
 **The overlay shows exactly those presses and no more.** A key that has aged out
@@ -263,44 +298,28 @@ with `mash_samples = 5` leaves `O P [ H J` lit and `Y U I` dark; at 3 only
 **Presses are grouped into clusters, and a fit never spans two.** A gap longer
 than `mashClusterMs` (200ms) ends the gesture, and the next press starts a fresh
 cluster with nothing carried over. Without that, two sweeps either side of a pause
-were fitted together and produced a direction belonging to neither. The cluster bounds what a fit may see; the five-press window above bounds it
-further.
+were fitted together and produced a direction belonging to neither. The cluster
+bounds what a fit may see; the `mash_samples` window above bounds it further.
 
 ```
 presses 52ms apart   -> cluster = 4     one gesture
 presses 140ms apart  -> cluster = 1     each press starts its own
 ```
 
-**Which strategy turns presses into a direction is configurable**, because there
-is no obviously right answer and they are easy to compare. All five read the same
-press trail and return one velocity in key-widths per second:
-
-| | how it decides | character |
-|---|---|---|
-| `cpa` | fits each three presses to the axis where the two velocities are most equal and largest, then averages those | the original; smooths curvature without ignoring it |
-| `lsq` | least squares of position against time — the slope *is* the velocity | steadiest all-rounder, one stray key barely moves it |
-| `net` | first press to last, over elapsed time | calmest; blind to the path between, slowest to turn |
-| `pca` | dominant axis of the positions, speed from distance *along* it | the only one that reads mashing back and forth on one line as motion; the others average it to nothing |
-| `ewma` | every hop's own velocity, newest weighted most | turns fastest, twitchiest, no hard window edge |
-
-All of them steer from the **second** press of a cluster except `cpa`, which cannot
-start before the third: a subvector compares the two velocities inside a triple,
-and two presses give only one. Until a strategy has enough to work with, a press
-moves the cursor by the `mashStepPx` floor and nothing more.
-
-```
-                cpa    lsq    net    pca    ewma
-2 presses        1px   324px  376px  410px  366px
-3 presses      569px  1135px    -   1135px    -
-```
+**A cluster becomes a direction by least squares.** `lsq` fits position against
+time over the window and takes the slope: that slope *is* the velocity, in grid
+units per second, and the fit is the steadiest of the several strategies this went
+through — one stray key barely moves it. It steers from the **second** press of a
+cluster; until then a press moves the cursor by the `mashStepPx` floor and nothing
+more.
 
 ```lua
 MOUSEKEYS = {
-  mash_strategy = "lsq",                        -- steers the pointer
-  mash_gain = 20,                               -- how hard each press shoves it
-  mash_vmax = 1000,                             -- ceiling, and so the longest throw
-  mash_samples = 4,                             -- presses a fit may see
-  mash_debug_strategies = "cpa,lsq,pca,ewma",   -- also drawn, for comparison
+  mash_strategy = "lsq",             -- steers the pointer
+  mash_gain = 20,                    -- how hard each press shoves it
+  mash_vmax = 1000,                  -- ceiling, and so the longest throw
+  mash_samples = 4,                  -- presses a fit may see
+  mash_debug_strategies = "lsq",     -- also drawn, for comparison
 }
 ```
 
@@ -310,105 +329,14 @@ sluggish: the impulse is `mash_gain * speed^3`, so a press carries
 here is felt hardest at the fast end — halving it barely alters a slow nudge but
 takes a long way off a burst.
 
-An unrecognised name is ignored rather than breaking the mode. Measured on the
-same four-press run across a row, they land within about 12% of each other
-(`ball` 1189–1355 px/s), so any of them is usable; the differences show up in
-how they handle curves, reversals and stray keys rather than in raw speed.
-
-**Direction comes from a fit over the last three presses** — this is `cpa`, the
-default. With
-`a = (p₂-p₁)/Δt₁` and `b = (p₃-p₂)/Δt₂`, pick the unit `u` maximising
-`(a·u)(b·u)`. For a given sum a product peaks when its terms are equal, so this
-asks for the direction along which the two velocities are as *equal* — and as
-*large* — as possible, in one term. It is the principal eigenvector of
-`(abᵀ+baᵀ)/2`: one `atan2`, no iteration.
-
-Asking only for equal velocities does not work, and the failure is quiet. A mash
-straight right that speeds up projects to 10 and 20 along x, but to **0 and 0**
-along y — perfectly equal, and motionless. Uniformity alone always picks the
-perpendicular, and the ball never moves. Multiplying rejects it: any direction
-with no motion along it scores zero.
-
-The subvector's length is the mean of those two projected velocities — the speed
-along the fitted axis, ignoring sideways scatter. The subvectors of the current
-cluster are averaged, weighted by length, into one drive vector,
-so longer hops count for more and a mash that reverses cancels itself out.
-
-#### Nudging
-
-A lone tap is not a swipe. `mash_nudge` turns one into a **nudge**: a small push
-away from the middle of the grid, for the last few pixels rather than for
-travelling. Two rings say how far.
-
-```
-   7  8  9  0  -        outer ring, mash_nudge_outer (5px)
-  Y  U  I  O  P  [      I O inner (1px), Y [ outer, U P between
-   H  J  K  L  ;  '     K L inner,       H ' outer, J ; between
-    N  M  ,  .  /       outer ring
-```
-
-A key *on* a ring pushes that ring's distance exactly; only keys between the rings
-interpolate, by how far out they sit. Going by radius alone would shortchange the
-ring members — the outer ring is not a circle, and its top and bottom middles sit
-well inside the mean radius, so `9` would push 3.2px where `-` pushes 5.
-
-The direction is from the centre of the inner ring through the key, so the grid
-works like a dial: the further out you tap, the further it goes.
-
-```
-key     ring      moved      distance
-I       inner     (-1,-1)     1.41px
-O       inner     (+1, 0)     1.00px
-U       between   (-4,-1)     4.12px
-7       outer     (-4,-3)     5.00px
-Y       outer     (-5,-1)     5.10px
-```
-
-**Held rather than tapped, a nudge repeats** — the same push over and over, so the
-grid can be leaned on for a longer adjustment. The first repeat waits
-`mash_nudge_delay_ms` (250ms), as a held key does, so a slow tap is still exactly
-one nudge; after that it goes every `mash_nudge_rate_ms` (90ms).
-
-```
-quick tap on 7        moved (-4,-3)            one nudge
-hold 7 for 1.2s       (-12,-9) -> (-82,-58)    repeats, stops on release
-repeat off, hold O    moved (+1,-1)            one nudge only
-```
-
-Each repeat is confirmed by asking whether that key is still down, rather than
-assumed until a release arrives — the same reason the grip polls. A repeat is the
-same key still held, not a new press, so it does not enter the cluster or disturb
-what a fit would see.
-
-The nudge fires on the opening press of a cluster rather than waiting to confirm
-the tap stayed alone — waiting would put 200ms of delay on the one gesture that
-exists to be precise. A sweep that follows keeps the pixel or two already pushed,
-which vanishes into it, and clears the marking on its next press.
-
-In the debug view a nudged key goes **red**, with a green vector from the ring
-centre out to it: the push actually applied, unlike the drive vector, which is a
-direction drawn from the grid's centre.
-
-**A finger still on a key is a hand still on the ball.** If a swipe ends without
-lifting every key, the ball is *gripped*: the cursor stops, and the momentum bleeds
-away rather than being stored. Letting go does not resume the swipe.
-
-Grip friction (`mashGripFriction`, 12 e-folds/second) is well above rolling
-friction, because holding on is meant to stop the cursor rather than slow it
-gently — a couple of hundred milliseconds leaves nothing to continue with.
-
-```
-gripped   +0.35s x=307  grip=true   ball=2,0
-          +1.05s x=307  grip=true   ball=0,0       stopped, momentum gone
-released  +1.05s x=307  grip=false  ball=0,0       +0px: the swipe is over
-```
-
-This is polled rather than driven by key releases, because a release cannot be
-relied on: once two bound keys are held Hyprland delivers neither key's release,
-and a missed one would leave the ball gripped for the rest of the session. The poll
-starts only once the ball has been rolling quietly for `holdCheckMs` (50ms) — not
-on every press, which would cost a subprocess per tap — so there is a brief glide,
-bounded by that plus the round trip, before the grip takes hold.
+Four other strategies once lived here — a three-press principal-axis fit, a
+net-displacement fit, PCA, and an EWMA of per-hop velocities — and on the same
+four-press run they landed within about 12% of each other, so the choice never
+mattered as much as it looked like it might. They are gone, but the seam they
+were fitted into is not: `mash_strategy` still names the one in use,
+`mash_debug_strategies` still says which are drawn, the overlay still colours and
+dashes each by name, and `z` still cycles. Adding one back is a function and a
+name in a list.
 
 **The ball.** Each press adds an impulse along the drive direction and friction
 bleeds it away: `v += u·mash_gain·speed³`, then `v *= e^(-friction·dt)`, capped at
@@ -513,14 +441,14 @@ arbitrary speed.
 
 #### Seeing what mash is thinking
 
-While mash is the active keymap, a debug display sits in the upper left. It is on
+While a session is open, a debug display sits in the upper left. It is on
 by default and **backtick** toggles it. **`z` switches which strategy steers**,
 cycling through the ones being drawn so the new one is always on screen to compare
 against, and the legend highlights it. That is a live experiment rather than a
 setting: the next session takes its strategy from `mash_strategy` again.
 
 ```
-- subvector  - drive  - ignored          legend, in the colours below
+- lsq                                    legend, in the colours below
 
   7  8  9  0  -                          the grid as it sits under your hand;
  Y  U  I  O  P  [                        struck: white on a grey shaded green
@@ -531,15 +459,8 @@ setting: the next session takes its strategy from `mash_strategy` again.
          *                               because they are directions, not places
 ```
 
-Yellow is a subvector, green the drive vector actually steering the pointer, red
-a fit that was rejected and contributed nothing.
-
-**Subvectors start at the first key of the triple they were measured from**, so
-each sits on the stretch of the gesture it describes and the chain of them traces
-the path the hand took. They are drawn at half opacity: there is one per press,
-and they are working detail rather than the answer, so they should not crowd out
-the drive vector. Only the aggregates — the drive vector and the strategies —
-radiate from the grid centre, since those are directions rather than places.
+Green is the drive vector actually steering the pointer. Every vector radiates
+from the grid's centre, because a vector here is a direction rather than a place.
 
 **Keys are shaded by their timing within the cluster**, from dark grey at the
 start of the gesture to bright green at the most recent press, by
@@ -577,9 +498,9 @@ Colour and dash come from a strategy's place in the canonical list rather than
 from a hash of its name. Hashing gave no guarantee that two would not land on
 near-identical hues, which is the one thing this must not do; an index gives each
 an evenly spaced slot, with a name-derived jitter *inside* its own slot so the
-palette does not read as a plain rainbow while no two slots can ever touch. The
-five are 57° apart at the closest. A strategy keeps its colour whichever subset is
-drawn.
+palette does not read as a plain rainbow while no two slots can ever touch. A
+strategy keeps its colour whichever subset is drawn. With one strategy left the
+machinery is idle, and it is kept for the same reason `z` is.
 
 Labels on the vectors themselves were tried first and removed: they collided
 precisely when the strategies agreed, which is when telling them apart matters
@@ -982,8 +903,8 @@ Two consequences fall out of the bind route:
   `repeatGapMs`. Scroll keys are the exception and take the `exec_cmd` route
   deliberately; see below.
 - **Buttons and Tab ignore repeats.** Several of those keys are movement in
-  another keymap, so they are bound as repeating; firing on a repeat would turn
-  a held key into a click storm.
+  a direction in another mode, so they are bound as repeating; firing on a repeat
+  would turn a held key into a click storm.
 
 Keys you don't bind pass through to the focused app, so typing during a latched
 session inserts text. Bound keys are consumed and won't leak.
@@ -1031,7 +952,7 @@ one is enough.
 
    ```bash
    omarchy-shell shell call mousekeys probe ""
-   # opened=true active=true sticky=false keymap=right moving=false bonus=0.0
+   # opened=true active=true sticky=false mode=mash modes=[mash,mash-lh] keys=17
    ```
 
 4. Add the bindings from `bindings.lua.example` to `~/.config/hypr/bindings.lua`.

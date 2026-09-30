@@ -1,324 +1,187 @@
 -- Mouse keys: SUPER + M enters. A short press starts the session when the chord
 -- is released and it exits after 2s idle; holding it past 500ms starts the
 -- session right then and latches until you hit SUPER + M again.
+--
+-- Everything the plugin knows about keys lives here. Each mode is a submap and a
+-- key layout; TAB moves between them and the choice persists. Tunables sit at the
+-- top level and any mode may override one by naming it.
+MOUSEKEYS = {
+  -- ---- timing ------------------------------------------------------------
+  fast_tap_ms = 135,   -- re-press the same key quicker than this to double-tap
+  carry_ms    = 175,   -- press a direction this soon after another to keep its speed
+
+  -- ---- the trackball -----------------------------------------------------
+  mash_gain    = 20,     -- impulse per (unit/s)^3, in the coordinate space above
+  mash_vmax    = 1000,   -- px/s ceiling, and so the longest throw: vmax/3 pixels
+  mash_samples = 4,      -- presses a fit may see
+  mash_strategy = "lsq",
+  mash_debug_strategies = "lsq",
+
+  -- ---- scrolling, while the wheel key is held -----------------------------
+  scroll_repeat_scale_min   = 1,      -- detents per repeat to begin with
+  scroll_repeat_scale_max   = 10,     -- and once the ramp has run out
+  scroll_repeat_scale_ultra = 100,    -- double-tapped and held: straight to here
+  scroll_increase_delay     = 1.5,    -- seconds flat before the ramp starts
+  scroll_increase_time      = 5,      -- seconds the ramp takes
+  scroll_repeat_ms          = 60,     -- between repeats
+
+  modes = {
+    mash = {
+    keys = {
+      -- key, x, y. Any coordinate space you like, as long as x grows rightward
+      -- and y downward; mash_gain is what scales it to pixels. These are in key
+      -- widths, with the rows staggered as the keyboard actually is.
+      { "Y", 0.00, 1 }, { "U", 1.00, 1 }, { "I", 2.00, 1 },
+      { "O", 3.00, 1 }, { "P", 4.00, 1 }, { "bracketleft", 5.00, 1 },
+      { "H", 0.25, 2 }, { "J", 1.25, 2 }, { "K", 2.25, 2 },
+      { "L", 3.25, 2 }, { "semicolon", 4.25, 2 }, { "apostrophe", 5.25, 2 },
+      { "N", 0.75, 3 }, { "M", 1.75, 3 }, { "comma", 2.75, 3 },
+      { "period", 3.75, 3 }, { "slash", 4.75, 3 },
+    },
+
+    -- Struck alone, these steer instead of contributing to a sweep.
+    dirs = {
+      I = "up", M = "down", J = "left", K = "right",
+      U = "upleft", O = "upright", N = "downleft", comma = "downright",
+    },
+
+    buttons = { lmb = "8", mmb = "9", rmb = "0" },
+    wheel    = "7",        -- held: the whole mode scrolls
+    fine     = "minus",    -- held: every step is one pixel
+    cycle    = "TAB",      -- next mode
+    debug    = "grave",    -- the overlay
+    strategy = "Z",        -- next strategy
+
+    -- Bound to nothing, so a stray reach does not leak into the focused window.
+    inert = { "5", "6", "R", "T", "F", "G", "V", "B", "A", "S", "D", "W" },
+    },
+
+    -- A left-hand layout, a copy of the above for now.
+    ["mash-lh"] = {
+    keys = {
+      -- key, x, y. Any coordinate space you like, as long as x grows rightward
+      -- and y downward; mash_gain is what scales it to pixels. These are in key
+      -- widths, with the rows staggered as the keyboard actually is.
+      { "Y", 0.00, 1 }, { "U", 1.00, 1 }, { "I", 2.00, 1 },
+      { "O", 3.00, 1 }, { "P", 4.00, 1 }, { "bracketleft", 5.00, 1 },
+      { "H", 0.25, 2 }, { "J", 1.25, 2 }, { "K", 2.25, 2 },
+      { "L", 3.25, 2 }, { "semicolon", 4.25, 2 }, { "apostrophe", 5.25, 2 },
+      { "N", 0.75, 3 }, { "M", 1.75, 3 }, { "comma", 2.75, 3 },
+      { "period", 3.75, 3 }, { "slash", 4.75, 3 },
+    },
+
+    -- Struck alone, these steer instead of contributing to a sweep.
+    dirs = {
+      I = "up", M = "down", J = "left", K = "right",
+      U = "upleft", O = "upright", N = "downleft", comma = "downright",
+    },
+
+    buttons = { lmb = "8", mmb = "9", rmb = "0" },
+    wheel    = "7",        -- held: the whole mode scrolls
+    fine     = "minus",    -- held: every step is one pixel
+    cycle    = "TAB",      -- next mode
+    debug    = "grave",    -- the overlay
+    strategy = "Z",        -- next strategy
+
+    -- Bound to nothing, so a stray reach does not leak into the focused window.
+    inert = { "5", "6", "R", "T", "F", "G", "V", "B", "A", "S", "D", "W" },
+    },
+  },
+}
+
+-- The plugin asks for its settings through this, so the merge of a mode's
+-- overrides onto the top-level defaults happens once, here, rather than being
+-- reimplemented on the other side.
+function MOUSEKEYS_SETTINGS(mode)
+  local m = MOUSEKEYS
+  local md = (m.modes or {})[mode] or {}
+  local function g(k)
+    if md[k] ~= nil then return md[k] end
+    return m[k]
+  end
+  local out = {}
+  local function put(k, v) out[#out + 1] = k .. "=" .. tostring(v == nil and "" or v) end
+
+  for _, k in ipairs({ "fast_tap_ms", "carry_ms", "mash_gain", "mash_vmax",
+                       "mash_samples", "mash_strategy", "mash_debug_strategies",
+                       "scroll_repeat_scale_min", "scroll_repeat_scale_max",
+                       "scroll_repeat_scale_ultra", "scroll_increase_delay",
+                       "scroll_increase_time", "scroll_repeat_ms" }) do
+    put(k, g(k))
+  end
+
+  -- index:key:x:y, in the order declared, which is the index the binds use
+  local keys = {}
+  for i, e in ipairs(md.keys or {}) do
+    keys[#keys + 1] = (i - 1) .. ":" .. e[1] .. ":" .. e[2] .. ":" .. e[3]
+  end
+  put("keys", table.concat(keys, ","))
+
+  -- index:direction, for the keys that steer when struck alone
+  local dirs = {}
+  for i, e in ipairs(md.keys or {}) do
+    local d = (md.dirs or {})[e[1]]
+    if d then dirs[#dirs + 1] = (i - 1) .. ":" .. d end
+  end
+  put("dirs", table.concat(dirs, ","))
+
+  local names = {}
+  for name in pairs(m.modes or {}) do names[#names + 1] = name end
+  table.sort(names)
+  put("modes", table.concat(names, ","))
+
+  local b = md.buttons or {}
+  put("lmb", b.lmb); put("mmb", b.mmb); put("rmb", b.rmb)
+  put("wheel", md.wheel); put("fine", md.fine)
+  return table.concat(out, " ")
+end
+
 hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
   { submap_universal = true, description = "Mouse keys" })
 
--- Timing the plugin needs but Hyprland has no option for. Hyprland keeps its Lua
--- globals across config loads, so the plugin reads this table back over
--- `hyprctl repl` when a session starts — which means hyprctl reload is enough to
--- apply a change, no shell restart.
---
---   fast_tap_ms  re-pressing the same key quicker than this is a "double tap":
---                a move key skitters to the next window edge or corner instead
---                of stepping, and a scroll key runs to the top or bottom of the
---                view. Must stay under input:repeat_delay (250ms), or a held
---                key's first auto-repeat would read as a deliberate re-press.
---
---   carry_ms     press a direction within this of the last moment a move key was
---                down and the speed already built up carries over, instead of
---                accelerating from rest again. Covers letting go of one arrow a
---                moment before pressing the next, which otherwise stalls until
---                the new key's first auto-repeat 250ms later. Independent of
---                fast_tap_ms; they start out equal only by coincidence.
---   mash_strategy          how mash turns key presses into one direction and
---                          speed. All of them read the same press trail:
---                            cpa   fit each 3 presses to the axis where the two
---                                  velocities are most equal and largest, then
---                                  average those (the original)
---                            lsq   least squares of position against time; the
---                                  slope is the velocity. Steadiest all-rounder
---                            net   first press to last over elapsed time; calm,
---                                  blind to the path between, slow to turn
---                            pca   dominant axis of the positions, speed from
---                                  distance along it. The only one that reads
---                                  mashing back and forth on one line as motion
---                            ewma  every hop's velocity, newest weighted most;
---                                  turns fastest, twitchiest
---   mash_gain              how hard each press shoves the ball: the impulse is
---                          mash_gain * speed^3, in px/s per (key-width/s)^3, and
---                          a press carries mash_gain * speed^3 / 3 pixels once
---                          friction has run out. Cubic because the two ends of
---                          the scale are far apart — a press at two a second
---                          should nudge one pixel, a four-press burst should
---                          cross the screen — so small changes here are felt
---                          hardest at the fast end.
---   mash_samples           how many of the most recent presses a fit may see.
---                          Fewer follows the hand more closely and turns sooner;
---                          more is steadier but keeps steering by where the
---                          gesture has been. Still clipped by the cluster, so it
---                          is the last N presses of the gesture in progress. The
---                          debug overlay shows exactly these, and no more.
---   Held in wheel mode, a direction key repeats, and the repeats grow, so the
---   same key serves a line and a page. Flat at first so a short hold stays
---   precise, then ramping, then flat again at the top.
---
---   scroll_repeat_scale_min  detents per repeat to begin with
---   scroll_repeat_scale_max  and once the ramp has run out
---   scroll_increase_delay    seconds at the minimum before the ramp starts
---   scroll_repeat_scale_ultra  detents per repeat when a vertical key is struck
---                            twice and held: the ramp is skipped entirely and it
---                            starts here, for crossing a long document at once.
---                            Sideways keys keep their end-of-view double-tap.
---   scroll_repeat_ms         between repeats. The plugin drives these itself:
---                            Hyprland stops repeating a key once a second bound
---                            key is held, and in wheel mode 7 always is.
---   scroll_increase_time     seconds the ramp takes to reach the maximum
---                            (both in seconds, unlike the _ms settings above)
---
---   mash_nudge             whether a lone tap nudges the pointer a few pixels away
---                          from the middle of the grid, instead of doing nothing.
---                          A tap that turns into a swipe keeps its nudge, which is
---                          a pixel or two and vanishes into the sweep.
---   mash_nudge_inner       pixels an inner-ring key pushes (I O K L)
---   mash_nudge_outer       pixels an outer-ring key pushes (the surrounding ring);
---                          keys between the rings interpolate between the two.
---   mash_nudge_repeat      whether holding a nudge key keeps nudging, the way a
---                          held key keeps typing. A tap gives exactly one push.
---   mash_nudge_delay_ms    wait before the first repeat, so a slow tap is still
---                          one nudge
---   mash_nudge_rate_ms     and how often it repeats after that
---   mash_grip              whether a key still held at the end of a swipe grips
---                          the ball. On, the cursor stops and the momentum bleeds
---                          away, so letting go does not resume the swipe. Off, the
---                          ball free spins whatever your fingers are doing, and
---                          nothing is polled.
---   mash_grip_friction     how fast a grip bleeds the momentum off, e-folds per
---                          second. Well above mash_vmax's rolling friction of 3,
---                          because holding on is meant to stop the cursor rather
---                          than slow it gently. Lower it to let a grip coast.
---   mash_vmax              ceiling on ball speed, px/s, and so the longest throw
---                          a burst can produce: friction is 3 e-folds a second,
---                          so the cursor coasts at most mash_vmax / 3 pixels.
---                          Above a certain mash rate this, not mash_gain, is what
---                          decides how far the cursor goes.
---   mash_debug_strategies  also computed and drawn in the debug view for
---                          comparison, whether or not they are steering. Each
---                          gets a colour and dash pattern from its own name.
-MOUSEKEYS = {
-  fast_tap_ms = 135,
-  carry_ms = 175,
-  mash_strategy = "lsq",
-  mash_gain = 20,
-  mash_vmax = 1000,
-  mash_samples = 4,
-  scroll_repeat_scale_min = 1,
-  scroll_repeat_scale_max = 10,
-  scroll_increase_delay = 1.5,
-  scroll_increase_time = 5,
-  scroll_repeat_scale_ultra = 100,
-  scroll_repeat_ms = 60,
-  mash_nudge = false,
-  mash_nudge_inner = 1,
-  mash_nudge_outer = 5,
-  mash_nudge_repeat = true,
-  mash_nudge_delay_ms = 250,
-  mash_nudge_rate_ms = 90,
-  mash_grip = false,
-  mash_grip_friction = 12,
-  mash_debug_strategies = "cpa,lsq,pca,ewma",
-}
-
--- Each keymap is a submap. The binds name ACTIONS, not keys, so remapping is a
--- one-line edit here and needs no change to the plugin — and adding a fourth
--- keymap is just another call plus its name in shell.json.
---
--- move/scroll keys repeat so a held key sweeps; buttons and cycle fire once.
--- Each is bound once per entry in mousekeys_mods, which is what lets Shift+scroll
--- be horizontal and Ctrl+scroll zoom in the app while leaving SUPER and ALT free.
--- Scroll keys additionally bind their RELEASE, because a wheel event cancels
--- Hyprland's key repeat, so the plugin cannot see the key is still down; a
--- `release = true` bind will not dispatch a global shortcut, so it calls back in.
--- Mouse mode's keys are bound once per modifier combination that should drive it,
--- rather than with ignore_mods. SUPER and ALT are deliberately absent, so a key
--- held with either matches nothing here, mouse mode ignores it, and it reaches the
--- focused application instead.
---
--- ignore_mods cannot express that: it fires whatever is held. Nor does declaring
--- an explicit "SUPER + key" no-op alongside it help — measured, the ignore_mods
--- bind still wins, in either declaration order.
---
--- This frees the key; it does not restore Omarchy's own SUPER shortcuts. Those
--- live in the default submap, and a submap replaces the bind set rather than
--- extending it, so nothing declared outside can fire while mouse mode is on.
+-- Mouse mode binds each key once per modifier combination that should reach it.
+-- SUPER and ALT are deliberately absent, so a key held with either matches nothing
+-- here and goes to the focused application instead. ignore_mods cannot express
+-- that: it fires whatever is held, and an explicit "SUPER + key" no-op alongside
+-- it loses to it, in either declaration order.
 local mousekeys_mods = { "", "SHIFT + ", "CTRL + ", "SHIFT + CTRL + " }
 
 local function mousekeys_bind(key, dispatcher, opts)
+  -- A mode may leave any of these out, and nil must skip rather than throw: an
+  -- error here aborts the whole submap callback, silently losing every bind after
+  -- the missing one.
+  if key == nil or key == "" then return end
   for _, m in ipairs(mousekeys_mods) do
     hl.bind(m .. key, dispatcher, opts)
   end
 end
 
-local function mousekeys_map(name, k)
-  -- Published so the plugin can ask which direction keys are physically down.
-  -- Hyprland cancels key repeat when any key is released and never hands it back
-  -- to a key still held, so repeats alone cannot tell that the other arrow is
-  -- still pressed, and a release bind does not fire once two bound keys are down.
-  -- The plugin evaluates hl.is_key_down against these, which is why the keys live
-  -- here and not there: is_key_down needs exact X keysyms and this is the only
-  -- place that knows what the keys are.
-  MOUSEKEYS.keys = MOUSEKEYS.keys or {}
-  MOUSEKEYS.keys[name] = k
+local function mousekeys_mode(name, cfg)
   hl.define_submap("mousekeys-" .. name, function()
-    hl.bind("CTRL + ALT + Escape", hl.dsp.submap("reset"))          -- emergency exit
-    for action, key in pairs({ up = k.up, down = k.down, left = k.left, right = k.right }) do
-      mousekeys_bind(key, hl.dsp.global("mousekeys:" .. action), { repeating = true, })
+    hl.bind("CTRL + ALT + Escape", hl.dsp.submap("reset"))   -- emergency exit
+
+    -- Grid keys are named by index, not by position, so the layout above can use
+    -- any coordinates it likes without the plugin having to know them in advance.
+    -- Repeating, so holding a direction key sweeps as an arrow would; the plugin
+    -- reads a repeat as the same key still down rather than a fresh point.
+    for i, e in ipairs(cfg.keys or {}) do
+      mousekeys_bind(e[1], hl.dsp.global("mousekeys:k" .. (i - 1)), { repeating = true })
     end
-    for action, key in pairs({ scrollup = k.scrollup, scrolldown = k.scrolldown }) do
-      mousekeys_bind(key, hl.dsp.global("mousekeys:" .. action), { repeating = true, })
-      mousekeys_bind(key, hl.dsp.exec_cmd("omarchy-shell -q shell call mousekeys scrollstop ''"),
-        { release = true, })
+
+    local b = cfg.buttons or {}
+    mousekeys_bind(b.lmb, hl.dsp.global("mousekeys:lmb"), {})
+    mousekeys_bind(b.mmb, hl.dsp.global("mousekeys:mmb"), {})
+    mousekeys_bind(b.rmb, hl.dsp.global("mousekeys:rmb"), {})
+    mousekeys_bind(cfg.wheel, hl.dsp.global("mousekeys:wheel"), {})
+    mousekeys_bind(cfg.fine, hl.dsp.global("mousekeys:fine"), { repeating = true })
+    mousekeys_bind(cfg.cycle, hl.dsp.global("mousekeys:cycle"), {})
+    mousekeys_bind(cfg.debug, hl.dsp.global("mousekeys:debug"), {})
+    mousekeys_bind(cfg.strategy, hl.dsp.global("mousekeys:strategy"), {})
+
+    for _, key in ipairs(cfg.inert or {}) do
+      mousekeys_bind(key, hl.dsp.global("mousekeys:noop"), {})
     end
-    for action, key in pairs({ lmb = k.lmb, mmb = k.mmb, rmb = k.rmb }) do
-      mousekeys_bind(key, hl.dsp.global("mousekeys:" .. action), {})
-    end
-    mousekeys_bind(k.cycle or "TAB", hl.dsp.global("mousekeys:cycle"), {})
   end)
 end
 
--- "mash" is a different kind of navigation: the keys below form a grid on the
--- right half of the keyboard, and mashing across them rolls the pointer like a
--- trackball. Which key sits where is a *binding*, so the grid is described here:
--- each action is named "m<x4>_<y>", where y is the row and x4 is the column in
--- *quarter*-key steps. Quarters rather than halves because the real stagger is
--- not uniform: the number row sits half a key right of YUIOP, while HJKL and NM
--- are a further quarter right again. Quartering x keeps a column step and a row
--- step the same distance, so the grid measures the way it feels under the hand.
---
---    7 8 9 0 -          y=0, x4 =  2  6 10 14 18     (+0.50 keys)
---   Y U I O P [         y=1, x4 =  0  4  8 12 16 20  (+0.00)
---    H J K L ; '        y=2, x4 =  1  5  9 13 17 21  (+0.25)
---     N M , . /         y=3, x4 =  3  7 11 15 19     (+0.75)
---
--- Re-measuring this for a differently-staggered keyboard is an edit here alone.
--- The number row is no longer part of the grid: 7 is the wheel, 8 9 0 are the
--- mouse buttons and - is the fine modifier. y still starts at 0 there, so the
--- remaining rows keep their coordinates and their action names unchanged.
-local mash_grid = {
-  { y = 1, keys = { Y = 0, U = 4, I = 8, O = 12, P = 16, bracketleft = 20 } },
-  { y = 2, keys = { H = 1, J = 5, K = 9, L = 13, semicolon = 17, apostrophe = 21 } },
-  { y = 3, keys = { N = 3, M = 7, comma = 11, period = 15, slash = 19 } },
-}
-
--- Struck by accident while reaching for the grid, so they are bound to nothing
--- rather than left to fall through to whatever is underneath.
-local mash_null = { "5", "6", "R", "T", "F", "G", "V", "B" }
-
--- A lone tap is a nudge rather than a swipe: a small push away from the middle of
--- the grid, for the last few pixels. Two rings say how far. A key on a ring pushes
--- that ring's distance exactly; a key between them interpolates by how far out it
--- sits, which is what U, P, J and semicolon do here.
---
---        7  8  9  0  -          outer
---       Y  U  I  O  P  [        I O inner, Y [ outer, U P between
---        H  J  K  L  ;  '       K L inner, H ' outer, J ; between
---         N  M  ,  .  /         outer
--- Eight of the grid's keys double as directions. Struck alone they steer, with
--- the arrows' own model behind them — a step, acceleration while held, edge
--- snapping, and a double-tap that skitters to the next edge or corner. Struck as
--- part of a sweep they are points in space again.
---
---   U  I  O      up-left    up     up-right
---   J  .  K      left              right
---   N  M  ,      down-left  down   down-right
-local mash_dirs = { I = "up", M = "down", J = "left", K = "right",
-                    U = "upleft", O = "upright", N = "downleft", comma = "downright" }
-
-local mash_inner = { "I", "O", "K", "L" }
-local mash_outer = { "7", "8", "9", "0", "minus", "bracketleft", "apostrophe",
-                     "slash", "period", "comma", "M", "N", "H", "Y" }
-
--- The plugin knows positions, not key names, so the rings are published as the
--- action names it does know and it works the geometry out from their coordinates.
-local function mash_action(key)
-  for _, row in ipairs(mash_grid) do
-    for k, x4 in pairs(row.keys) do
-      if k == key then return "m" .. x4 .. "_" .. row.y end
-    end
-  end
-end
-
-local function mash_dir_map()
-  local out = {}
-  for key, dir in pairs(mash_dirs) do
-    local a = mash_action(key)
-    if a then out[#out + 1] = a .. ":" .. dir end
-  end
-  return table.concat(out, ",")
-end
-
-local function mash_ring(keys)
-  local out = {}
-  for _, k in ipairs(keys) do
-    local a = mash_action(k)
-    if a then out[#out + 1] = a end
-  end
-  return table.concat(out, ",")
-end
-
-local function mousekeys_mash()
-  MOUSEKEYS.keys = MOUSEKEYS.keys or {}
-  -- The arrows are live in mash too, so the plugin needs their keysyms here for
-  -- the same reason the other keymaps publish theirs: when two are held, repeats
-  -- stop and only is_key_down can say which is still down.
-  MOUSEKEYS.keys.mash = { wheel = "7", labels = {},    -- wheel is polled; labels
-                          fine = "minus", dirs = mash_dir_map(),
-                          -- the plugin polls these to know when to let a held
-                          -- mouse button back up
-                          lmb = "8", mmb = "9", rmb = "0",
-                          inner = mash_ring(mash_inner), outer = mash_ring(mash_outer) }
-  local labels = MOUSEKEYS.keys.mash.labels             -- name the debug display's cells
-  hl.define_submap("mousekeys-mash", function()
-    hl.bind("CTRL + ALT + Escape", hl.dsp.submap("reset"))
-    for _, row in ipairs(mash_grid) do
-      for key, x4 in pairs(row.keys) do
-        labels["m" .. x4 .. "_" .. row.y] = key
-        -- Repeating, so holding one of the direction keys sweeps the way an arrow
-        -- does. A repeat is the same key still down rather than a new point, and
-        -- the plugin reads it that way instead of restriking the grid.
-        mousekeys_bind(key, hl.dsp.global("mousekeys:m" .. x4 .. "_" .. row.y),
-                       { repeating = true })
-      end
-    end
-    for _, key in ipairs(mash_null) do
-      mousekeys_bind(key, hl.dsp.global("mousekeys:noop"), {})
-    end
-    for _, key in ipairs({ "7", "8", "9", "0", "minus", "A", "S", "D", "W",
-                           "TAB", "Z", "grave" }) do
-    end
-    -- Buttons and the wheel move to the number row, clear of the mashing hand.
-    mousekeys_bind("8", hl.dsp.global("mousekeys:lmb"), {})
-    mousekeys_bind("9", hl.dsp.global("mousekeys:mmb"), {})
-    mousekeys_bind("0", hl.dsp.global("mousekeys:rmb"), {})
-    -- Not repeating: wheel mode is kept alive by polling, and a repeating bind
-    -- here would hold Hyprland's repeat slot, so the direction key pressed while
-    -- it is down would never repeat and could never ramp.
-    mousekeys_bind("7", hl.dsp.global("mousekeys:wheel"), {})
-    -- Held, - makes every step a single pixel instead of baseStep.
-    mousekeys_bind("minus", hl.dsp.global("mousekeys:fine"), { repeating = true })
-    -- What the buttons used to be: absorbed, so a stray reach does nothing.
-    for _, key in ipairs({ "A", "S", "D", "W" }) do
-      mousekeys_bind(key, hl.dsp.global("mousekeys:noop"), {})
-    end
-    mousekeys_bind("TAB", hl.dsp.global("mousekeys:cycle"), {})
-    mousekeys_bind("grave", hl.dsp.global("mousekeys:debug"), {})
-    -- Cycles which strategy steers, among those the debug view is drawing, so the
-    -- new one is always on screen to compare. bindings.lua stays authoritative:
-    -- the next session starts from mash_strategy again.
-    mousekeys_bind("Z", hl.dsp.global("mousekeys:strategy"), {})
-  end)
-end
-mousekeys_mash()
-
-mousekeys_map("left", {
-  up = "I", down = "K", left = "J", right = "L",
-  lmb = "C", mmb = "X", rmb = "Z", scrollup = "Y", scrolldown = "H",
-})
-mousekeys_map("right", {
-  up = "W", down = "S", left = "A", right = "D",
-  lmb = "comma", mmb = "period", rmb = "slash", scrollup = "R", scrolldown = "F",
-})
-mousekeys_map("arrows", {
-  up = "UP", down = "DOWN", left = "LEFT", right = "RIGHT",
-  lmb = "D", mmb = "S", rmb = "A", scrollup = "Prior", scrolldown = "Next",
-})
+for name, cfg in pairs(MOUSEKEYS.modes) do mousekeys_mode(name, cfg) end

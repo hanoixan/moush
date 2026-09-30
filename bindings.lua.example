@@ -263,6 +263,9 @@ local function mousekeys_mash()
   -- stop and only is_key_down can say which is still down.
   MOUSEKEYS.keys.mash = { wheel = "7", labels = {},    -- wheel is polled; labels
                           fine = "minus", dirs = mash_dir_map(),
+                          -- the plugin polls these to know when to let a held
+                          -- mouse button back up
+                          lmb = "8", mmb = "9", rmb = "0",
                           inner = mash_ring(mash_inner), outer = mash_ring(mash_outer) }
   local labels = MOUSEKEYS.keys.mash.labels             -- name the debug display's cells
   hl.define_submap("mousekeys-mash", function()

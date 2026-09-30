@@ -23,6 +23,22 @@ happened yet, the session is *armed but inert*: keys do nothing, no marker.
 | **right** | `w` `a` `s` `d` | `,` | `.` | `/` | `r` / `f` |
 | **arrows** *(default)* | arrow keys | `d` | `s` | `a` | PgUp / PgDn |
 
+**A button follows its key: down while held, up when let go.** A tap is therefore
+a click and a hold is a drag, which is what selecting text needs. Sending a
+complete click on press could never drag — by the time the pointer moved, the
+button was already back up.
+
+```
+tap 8            btn=0 shortly after            down then up: a click
+hold 8, move     btn=1 throughout, cur 700->732 the button stays down
+release          btn=0
+exit while held  btn=0                          never stranded
+```
+
+Like every other held key it is polled rather than waited on, and a button that
+has claimed to be down for longer than `btnMaxMs` is let up regardless — a lost
+release must not leave the pointer dragging everything it touches.
+
 **Shift and Ctrl are yours, not the plugin's.** Every key is bound with
 `ignore_mods`, so it reaches the plugin whatever modifiers are held — and those
 modifiers then ride along on the pointer events the plugin injects. So

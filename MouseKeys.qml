@@ -367,7 +367,7 @@ Item {
       + " sreps=" + root.scrollReps + "/" + root.scrollDets
       + " sscale=" + (root.scrollHoldName === "" ? "-"
           : root.scrollScaleAt(Date.now() - root.scrollHoldAt).toFixed(2))
-      + " fine=" + root.fineHeld + " dirs=" + Object.keys(root.mashDirs).length
+      + " btn=" + root.btnHeld + " fine=" + root.fineHeld + " dirs=" + Object.keys(root.mashDirs).length
       + " nudge=" + root.mashNudge + "/" + root.nudgeInnerPx + "-" + root.nudgeOuterPx
       + " rings=" + root.nudgeInnerNames.length + "/" + root.nudgeOuterNames.length
       + " nudged=" + (root.nudgeName === "" ? "-" : root.nudgeName)
@@ -416,6 +416,7 @@ Item {
     root.lastHoldAction = ""
     root.lastDownAt = 0
     root.keysDown = ""
+    root.releaseButton()                   // never leave a button down
     root.wheelHeld = false
     root.ballHeld = false
     holdPoll.stop()
@@ -511,11 +512,38 @@ Item {
   // The session stays up across clicks, so it cannot unmap first. The window's
   // input region is empty and its keyboard focus is OnDemand, so the click
   // passes through to whatever is underneath.
-  function clickNow(button) {
+  // The button follows the key: down while it is held, up when it is let go. A
+  // tap is therefore still a click, and a hold is a drag — which is what selecting
+  // text needs. Sending a complete click on press could never drag, because by the
+  // time the pointer moved the button was already up again.
+  //
+  // ydotool's button byte is 0x40 for down, 0x80 for up, plus the button index.
+  readonly property int btnMaxMs: 15000       // a lost release must not pin it down
+  property int btnHeld: 0                     // 1 left, 2 right, 3 middle, 0 none
+  property string btnAction: ""               // which key is holding it
+  property real btnAt: 0
+
+  function pressButton(button, action) {
     if (button <= 0) return
-    var code = button === 1 ? "0xC0" : button === 2 ? "0xC1" : "0xC2"
-    Quickshell.execDetached(["ydotool", "click", code])
-    root.log("click " + button)
+    if (root.btnHeld === button) return        // already down; a repeat, not a press
+    if (root.btnHeld !== 0) root.releaseButton()
+    root.btnHeld = button
+    root.btnAction = action
+    root.btnAt = Date.now()
+    Quickshell.execDetached(["ydotool", "click",
+                             "0x4" + String(button - 1)])
+    root.log("button " + button + " down")
+    btnPoll.restart()
+  }
+
+  function releaseButton() {
+    if (root.btnHeld === 0) return
+    Quickshell.execDetached(["ydotool", "click",
+                             "0x8" + String(root.btnHeld - 1)])
+    root.log("button " + root.btnHeld + " up")
+    root.btnHeld = 0
+    root.btnAction = ""
+    btnPoll.stop()
   }
 
   function scrollX(detents) {
@@ -1614,9 +1642,9 @@ Item {
 
     // These must not auto-fire, and several of their keys repeat.
     if (name === "cycle") { if (!repeat) { root.pokeIdle(); root.cycleKeymap() } return }
-    if (name === "lmb") { if (!repeat) { root.pokeIdle(); root.clickNow(1) } return }
-    if (name === "mmb") { if (!repeat) { root.pokeIdle(); root.clickNow(3) } return }
-    if (name === "rmb") { if (!repeat) { root.pokeIdle(); root.clickNow(2) } return }
+    if (name === "lmb") { root.pokeIdle(); root.pressButton(1, name); return }
+    if (name === "mmb") { root.pokeIdle(); root.pressButton(3, name); return }
+    if (name === "rmb") { root.pokeIdle(); root.pressButton(2, name); return }
 
     if (name === "scrollup" || name === "scrolldown") {
       root.pokeIdle()
@@ -1989,6 +2017,31 @@ Item {
   }
 
   // The repeat wheel mode cannot get from the compositor.
+  // A button has the same problem as every other held key: no dependable release,
+  // so the compositor is asked instead.
+  Timer {
+    id: btnPoll
+    interval: root.wheelPollMs
+    repeat: true
+    onTriggered: {
+      if (!root.active || root.btnHeld === 0) { root.releaseButton(); return }
+      if (Date.now() - root.btnAt > root.btnMaxMs) { root.releaseButton(); return }
+      if (!btnProbe.running) btnProbe.running = true
+    }
+  }
+
+  Process {
+    id: btnProbe
+    command: ["hyprctl", "repl",
+      'local k = ((MOUSEKEYS or {}).keys or {})["' + root.keymap + '"] or {} '
+      + 'local s = k["' + root.btnAction + '"] if not s then return "false" end '
+      + 'for _, n in ipairs({ s, s:lower(), s:sub(1,1):upper() .. s:sub(2):lower() }) do '
+      + 'if hl.is_key_down(n) then return "true" end end return "false"']
+    stdout: StdioCollector {
+      onStreamFinished: if (String(text).indexOf("true") < 0) root.releaseButton()
+    }
+  }
+
   Timer {
     id: scrollTimer
     interval: root.scrollStartMs

@@ -46,15 +46,20 @@ Item {
   // coordinates it likes without this file knowing them in advance. The pool is
   // fixed because GlobalShortcut objects are declared, not created on demand.
   readonly property int maxKeys: 48
+  // Three sets: plain, coarse ("c" prefix) and fine ("f"). bindings.lua binds the
+  // same physical key to a different one of these per modifier held, which is how
+  // a press carries its modifier without anything having to be asked or polled.
   readonly property var gridActions: {
-    var out = []
-    for (var i = 0; i < root.maxKeys; i++) out.push("k" + i)
+    var out = [], i
+    for (i = 0; i < root.maxKeys; i++) out.push("k" + i)
+    for (i = 0; i < root.maxKeys; i++) out.push("ck" + i)
+    for (i = 0; i < root.maxKeys; i++) out.push("fk" + i)
     return out
   }
   readonly property var actions: ["up", "down", "left", "right",
                                   "upleft", "upright", "downleft", "downright",
                                   "lmb", "mmb", "rmb",
-                                  "wheel", "fine", "cycle", "debug", "strategy",
+                                  "wheel", "cycle", "debug", "strategy",
                                   "noop"].concat(root.gridActions)
 
   // Diagonals are normalised, so one press covers the same ground as a cardinal
@@ -69,7 +74,9 @@ Item {
 
   // ---- tuning ----------------------------------------------------------------
   readonly property real baseStep: 8          // pixels a single press moves
-  readonly property real finePx: 1            // ...with the fine key held
+  readonly property real finePx: 1            // ...with the fine modifier held
+  readonly property real coarsePx: 32         // ...with the coarse modifier held
+  readonly property real fineRollScale: 0.1   // how much a fine swipe is damped
   readonly property real edgeEpsilon: 0.5     // an edge this close counts as reached
   readonly property int repeatGapMs: 55       // longer gap than this: the key is up
   readonly property int holdChainMs: 400      // same key again within this: same hold
@@ -87,7 +94,6 @@ Item {
   readonly property int keysPollMs: 60        // ...and keep asking while held
   readonly property int keysGraceMs: 60       // each "still down" is good for this
   readonly property int wheelPollMs: 70       // wheel and fine keys, while held
-  readonly property int scrollEndDetents: 120 // a double-tap runs to the view's end
   readonly property real mashScrollPx: 90     // ball travel per detent, while scrolling
   readonly property int mashClusterMs: 200    // a longer gap starts a new gesture
   readonly property real mashFriction: 3.0    // e-folds/s of rolling decay
@@ -118,7 +124,9 @@ Item {
   property var mashLabels: ({})               // index -> key name, for the overlay
   property var mashPos: ({})                  // index -> {x, y}
   property var mashDirs: ({})                 // index -> direction, for lone presses
-  property var modeKeys: ({})                 // lmb/mmb/rmb/wheel/fine -> key name
+  property var modeKeys: ({})
+  property string coarseMod: "SHIFT"          // shown in the overlay; the binding
+  property string fineMod: "CTRL"             // itself lives in bindings.lua                 // lmb/mmb/rmb/wheel/fine -> key name
 
   property string mode: "mash"
   property var modeNames: ["mash"]
@@ -205,7 +213,9 @@ Item {
       }
       return
     }
-    if (k === "lmb" || k === "mmb" || k === "rmb" || k === "wheel" || k === "fine"
+    if (k === "coarse_mod") { root.coarseMod = v; return }
+    if (k === "fine_mod") { root.fineMod = v; return }
+    if (k === "lmb" || k === "mmb" || k === "rmb" || k === "wheel"
         || k === "cycle" || k === "debug" || k === "strategy") {
       var mk = ({})
       for (var q in root.modeKeys) mk[q] = root.modeKeys[q]
@@ -291,7 +301,11 @@ Item {
   property real ballVX: 0
   property real ballVY: 0
   property bool wheelHeld: false
-  property bool fineHeld: false
+  property string lastMod: ""                 // modifier on the most recent grid press
+  property real lastModAt: 0
+  property string holdMod: ""                 // ...and on the press that began this hold
+  property bool clusterExtent: false          // this swipe has already taken its edge
+  property bool scrollFine: false             // scrolling without the ramp
   property real scrollAcc: 0
   property real mashLastAt: 0
 
@@ -326,7 +340,7 @@ Item {
       + " edges=" + root.edgesX.length + "/" + root.edgesY.length
       + " cluster=" + root.clusterN + " win=" + root.mashTrail.length
       + " ball=" + root.ballVX.toFixed(0) + "," + root.ballVY.toFixed(0)
-      + " wheel=" + root.wheelHeld + " fine=" + root.fineHeld + " btn=" + root.btnHeld
+      + " wheel=" + root.wheelHeld + " mod=" + (root.lastMod || "-") + " btn=" + root.btnHeld
       + " ultra=" + root.scrollUltra
       + " sreps=" + root.scrollReps + "/" + root.scrollDets
       + " sscale=" + (root.scrollHoldName === "" ? "-"
@@ -415,9 +429,10 @@ Item {
     root.releaseButton()                      // never leave a button down
     resyncTimer.stop(); idleTimer.stop(); longPressTimer.stop()
     armPoll.stop(); hintTimer.stop(); keysPoll.stop()
-    wheelPoll.stop(); finePoll.stop(); btnPoll.stop()
+    wheelPoll.stop(); btnPoll.stop()
     scrollTimer.stop(); scrollKeyPoll.stop(); dbgTimer.stop()
-    root.wheelHeld = false; root.fineHeld = false
+    root.wheelHeld = false
+    root.lastMod = ""; root.holdMod = ""; root.clusterExtent = false; root.scrollFine = false
     root.scrollHoldName = ""; root.scrollUltra = false
     root.ballVX = 0; root.ballVY = 0
     ballTimer.stop()
@@ -467,36 +482,26 @@ Item {
     Quickshell.execDetached(["ydotool", "mousemove", "-w", "-x", "0", "-y", String(detents)])
   }
 
-  function scrollX(detents) {
-    if (detents === 0) return
-    Quickshell.execDetached(["ydotool", "mousemove", "-w", "-x", String(detents), "-y", "0"])
-  }
-
-  // In wheel mode the whole mode scrolls: a sweep's travel becomes detents on
-  // whichever axis it mostly runs along.
+  // In wheel mode the whole mode scrolls, on one axis: every direction collapses
+  // to a single amount, positive for up and right, negative for down and left.
   function scrollTravel(dir, px) {
-    var horiz = Math.abs(dir[0]) > Math.abs(dir[1])
-    root.scrollAcc += (horiz ? dir[0] : dir[1]) * px
+    root.scrollAcc += root.scrollSign(dir[0], dir[1]) * px
     var det = (root.scrollAcc / root.mashScrollPx) | 0
     if (det === 0) return
     root.scrollAcc -= det * root.mashScrollPx
-    if (horiz) root.scrollX(det)
-    else root.scroll(-det)                    // screen-down is wheel-down
+    root.scroll(det)
   }
 
-  // A discrete press is worth a detent outright: accumulating an 8px step against
-  // a detent's 90 would take a dozen presses to move the page once.
-  function scrollPress(dir, unbounded) {
-    var horiz = Math.abs(dir[0]) > Math.abs(dir[1])
-    var sign = horiz ? (dir[0] > 0 ? 1 : -1) : (dir[1] > 0 ? 1 : -1)
-    var n = unbounded ? root.scrollEndDetents : 1
-    if (horiz) root.scrollX(sign * n)
-    else root.scroll(-sign * n)
+  // A discrete press is worth a notch outright: accumulating an 8px step against
+  // a notch's 90 would take a dozen presses to move the page once.
+  function scrollPress(dir, notches) {
+    root.scroll(root.scrollSign(dir[0], dir[1]) * notches)
   }
 
   // Flat while the hold is young, then a straight ramp, then flat at the top.
   function scrollScaleAt(ms) {
     if (root.scrollUltra) return root.scrollRepeatScaleUltra
+    if (root.scrollFine) return root.scrollRepeatScaleMin     // fine never ramps
     var lo = root.scrollRepeatScaleMin, hi = root.scrollRepeatScaleMax
     var delay = root.scrollIncreaseDelay * 1000, span = root.scrollIncreaseTime * 1000
     if (ms <= delay) return lo
@@ -518,10 +523,7 @@ Item {
     if (n < 1) return
     root.scrollFrac -= n
     root.scrollDets += n
-    var horiz = Math.abs(dir[0]) > Math.abs(dir[1])
-    var sign = horiz ? (dir[0] > 0 ? 1 : -1) : (dir[1] > 0 ? 1 : -1)
-    if (horiz) root.scrollX(sign * n)
-    else root.scroll(-sign * n)
+    root.scroll(root.scrollSign(dir[0], dir[1]) * n)
   }
 
   // ---- window edges ----------------------------------------------------------
@@ -830,10 +832,40 @@ Item {
   // ---- mash ------------------------------------------------------------------
   // Each key is a point in space, so the order they are struck traces a path. The
   // direction of that path drives a rolling ball; the rate sets how hard.
+  // "k7" plain, "ck7" coarse, "fk7" fine -- all the same grid position.
+  function gridSlot(name) {
+    var mod = "", t = name
+    if (t.charAt(0) === "c" || t.charAt(0) === "f") { mod = t.charAt(0); t = t.slice(1) }
+    if (t.length < 2 || t.charAt(0) !== "k") return null
+    var i = parseInt(t.slice(1), 10)
+    return isNaN(i) ? null : ({ i: i, mod: mod })
+  }
   function gridIndex(name) {
-    if (name.length < 2 || name.charAt(0) !== "k") return -1
-    var i = parseInt(name.slice(1), 10)
-    return isNaN(i) ? -1 : i
+    var g = root.gridSlot(name)
+    return g ? g.i : -1
+  }
+  function stepFor(mod) {
+    return mod === "f" ? root.finePx : (mod === "c" ? root.coarsePx : root.baseStep)
+  }
+  // One scroll axis, with a fixed sign: up and right scroll positively, down and
+  // left negatively. A tie goes to the vertical, which is the axis a wheel means.
+  function scrollSign(dx, dy) {
+    if (Math.abs(dy) >= Math.abs(dx)) return dy < 0 ? 1 : -1
+    return dx > 0 ? 1 : -1
+  }
+  // The eight compass directions, nearest to a swipe's own vector.
+  function quantDir(dx, dy) {
+    var m = Math.sqrt(dx * dx + dy * dy)
+    if (!(m > 0)) return null
+    dx /= m; dy /= m
+    var best = null, bestDot = -2
+    for (var k in root.actionDirs) {
+      var v = root.actionDirs[k]
+      var vm = Math.sqrt(v[0] * v[0] + v[1] * v[1])
+      var dot = (dx * v[0] + dy * v[1]) / vm
+      if (dot > bestDot) { bestDot = dot; best = v }
+    }
+    return best
   }
 
   function gridPos(name) {
@@ -880,74 +912,37 @@ Item {
   }
 
   // What a press does when there is no gesture to fit it into.
-  function mashLone(name, now) {
+  function mashLone(name, mod, now) {
     var dn = root.gridDir(name)
     if (!dn) return
     root.moveDir = root.actionDirs[dn]
     root.collectEdges()
+    root.holdMod = mod                        // a sweep keeps the size it began at
     root.beginHold("move", dn, now)           // so holding it sweeps
-    root.moveStep(root.moveDir, root.fineHeld ? root.finePx : root.baseStep, false)
+    root.moveStep(root.moveDir, root.stepFor(mod), false)
   }
 
-  // "Go to the next extent this way", asked for by swiping and striking the last
-  // key of the swipe twice: J K K, or Y O O, or M I I. The direction is the
-  // swipe's own, first point to last, so no key carries an arrow meaning here --
-  // Y O O goes right because Y to O points right.
-  //
-  // This replaces re-tapping one key quickly, which could not be told apart from
-  // simply tapping that key fast. Two distinct keys are required for exactly that
-  // reason: K K, however fast, is tapping, and stays tapping.
-  function extentDir(name, now) {
-    if (root.clusterN === 0 || now - root.mashLastAt > root.mashClusterMs) return null
-    var hits = root.dbgHits
-    if (hits.length < 2 || hits[hits.length - 1].name !== name) return null
-    var seen = ({}), distinct = 0
-    for (var i = 0; i < hits.length; i++)
-      if (!seen[hits[i].name]) { seen[hits[i].name] = 1; distinct++ }
-    if (distinct < 2) return null
-    var t = root.mashTrail
-    if (t.length < 2) return null
-    var dx = t[t.length - 1].x - t[0].x, dy = t[t.length - 1].y - t[0].y
-    var m = Math.sqrt(dx * dx + dy * dy)
-    if (!(m > 0)) return null
-    dx /= m; dy /= m
-    // Nearest of the eight, so a swipe that is a few degrees off still reads as the
-    // direction it was meant to be.
-    var best = null, bestDot = -2
-    for (var k in root.actionDirs) {
-      var v = root.actionDirs[k]
-      var vm = Math.sqrt(v[0] * v[0] + v[1] * v[1])
-      var dot = (dx * v[0] + dy * v[1]) / vm
-      if (dot > bestDot) { bestDot = dot; best = v }
-    }
-    return best
-  }
-
-  function takeExtent(name, dir, now) {
+  // The coarse modifier turns a swipe into "go all the way that way": the pointer
+  // seeks the next window edge along the swipe's own vector rather than rolling.
+  // Once per swipe -- a long swipe is still one gesture, not a series of jumps.
+  function seekExtent(name, dir, now) {
     root.pokeIdle()
     // The jump replaces the roll rather than adding to it: whatever the swipe had
     // already thrown would otherwise carry the pointer past the edge it just took.
     root.ballVX = 0; root.ballVY = 0
     ballTimer.stop()
-    root.mashLastAt = now      // keep the cluster alive so the gesture can repeat
-    root.dbgLogEvent(root.gridLabel(name), now, true)
-    if (root.mashDebug) dbgTimer.start()
     if (root.wheelHeld) {
-      if (Math.abs(dir[1]) > Math.abs(dir[0])) {
-        root.scrollHoldName = name; root.scrollHoldAt = now
-        root.scrollFrac = 0; root.scrollReps = 0; root.scrollDets = 0
-        root.scrollUltra = true
-        root.scrollRepeat(name, dir, now)
-        scrollTimer.interval = root.scrollRepeatMs
-        scrollTimer.restart(); scrollKeyPoll.restart()
-        return
-      }
-      root.scrollPress(dir, true)          // sideways: to the end of the view
+      root.scrollHoldName = name; root.scrollHoldAt = now
+      root.scrollFrac = 0; root.scrollReps = 0; root.scrollDets = 0
+      root.scrollUltra = true; root.scrollFine = false
+      root.scrollRepeat(name, dir, now)
+      scrollTimer.interval = root.scrollRepeatMs
+      scrollTimer.restart(); scrollKeyPoll.restart()
       return
     }
     root.moveDir = dir
     root.collectEdges()
-    root.moveStep(dir, root.fineHeld ? root.finePx : root.baseStep, true)
+    root.moveStep(dir, root.stepFor("c"), true)
   }
 
   // Every grid press joins the cluster, whatever it then goes on to do. Scrolling
@@ -963,6 +958,7 @@ Item {
       root.dbgStrats = ({}); root.dbgHits = []
       root.dbgDriveAt = 0; root.dbgDriveX = 0; root.dbgDriveY = 0
       root.clusterN = 0
+      root.clusterExtent = false
     }
     root.clusterN += 1
     root.mashLastAt = now
@@ -987,9 +983,9 @@ Item {
     return true
   }
 
-  function mashPress(name, now) {
+  // The press is already in the cluster by the time this runs.
+  function mashPress(name, mod, now) {
     root.pokeIdle()
-    if (!root.mashRecord(name, now)) return
     var hist = root.mashTrail
 
     var drive = root.mashCompute(root.mashStrategy, now)
@@ -1008,24 +1004,30 @@ Item {
       if (m > 0) { ux = dx / m; uy = dy / m }
       else n = 1
     }
-    if (n < 2) { root.mashLone(name, now); return }
+    if (n < 2) { root.mashLone(name, mod, now); return }
     if (s > 0) { ux = drive.x / s; uy = drive.y / s }
 
     // Every press moves at least one step, the way a direction press does.
-    if (root.wheelHeld) root.scrollAcc += uy * root.baseStep
-    else root.warp(root.curX + ux * root.baseStep, root.curY + uy * root.baseStep)
+    var step = root.stepFor(mod)
+    if (root.wheelHeld) root.scrollAcc += root.scrollSign(ux, uy) * step
+    else root.warp(root.curX + ux * step, root.curY + uy * step)
     if (!(s > 0)) return
 
     // Impulse grows steeply with mash rate because the two ends of the scale are
     // far apart: a slow press should nudge, a fast burst should cross the screen.
     var imp = root.mashGain * Math.pow(s, 3)
+    if (mod === "f") imp *= root.fineRollScale     // fine damps the whole throw
     root.dbgLogImpulse(imp)
     root.ballVX += ux * imp
     root.ballVY += uy * imp
+    // Fine has to cap the speed, not just the shove. Damping the impulse alone did
+    // nothing visible, because at the shipped gain even a tenth of it still lands
+    // far above the ceiling and gets clamped back to exactly the same roll.
+    var cap = mod === "f" ? root.mashVMax * root.fineRollScale : root.mashVMax
     var sp = Math.sqrt(root.ballVX * root.ballVX + root.ballVY * root.ballVY)
-    if (sp > root.mashVMax) {
-      root.ballVX *= root.mashVMax / sp
-      root.ballVY *= root.mashVMax / sp
+    if (sp > cap) {
+      root.ballVX *= cap / sp
+      root.ballVY *= cap / sp
     }
     if (!ballTimer.running) { root.lastTickAt = now; ballTimer.start() }
   }
@@ -1095,25 +1097,24 @@ Item {
       if (!wheelPoll.running) wheelPoll.start()
       return
     }
-    if (name === "fine") {
-      if (!root.fineHeld) root.fineHeld = true
-      root.dbgAuxPress(name, now)
-      root.pokeIdle()
-      if (!finePoll.running) finePoll.start()
-      return
-    }
     if (name === "lmb") { root.dbgAuxPress(name, now); root.pokeIdle(); root.pressButton(1, name); return }
     if (name === "mmb") { root.dbgAuxPress(name, now); root.pokeIdle(); root.pressButton(3, name); return }
     if (name === "rmb") { root.dbgAuxPress(name, now); root.pokeIdle(); root.pressButton(2, name); return }
 
-    if (root.gridIndex(name) >= 0) {
-      var dn = root.gridDir(name)
+    var slot = root.gridSlot(name)
+    if (slot) {
+      // The grid position is what the cluster and the overlay care about; the
+      // modifier only changes what this press does with it.
+      var gname = "k" + slot.i
+      var mod = slot.mod
+      root.lastMod = mod; root.lastModAt = now
+      var dn = root.gridDir(gname)
       var mdir = dn ? root.actionDirs[dn] : null
 
       // A held key is not a new press, so repeats are settled before anything else
-      // looks at this press -- otherwise auto-repeat would re-fire the gesture.
+      // looks at this press.
       if (repeat) {
-        if (root.wheelHeld && mdir) { root.scrollRepeat(name, mdir, now); return }
+        if (root.wheelHeld && mdir) { root.scrollRepeat(gname, mdir, now); return }
         if (mdir && root.activeKind === "move") {
           root.lastDownAt = now
           root.confirmHold(now, root.repeatGapMs)
@@ -1122,28 +1123,48 @@ Item {
         return
       }
 
-      // A swipe whose last key is struck twice. Checked for every grid key, not
-      // just the ones that steer, since the direction comes from the swipe.
-      var ext = root.extentDir(name, now)
-      if (ext) { root.takeExtent(name, ext, now); return }
+      // Every grid press joins the cluster first, whatever it then goes on to do.
+      // Scrolling used to record separately, and only on the keys that steer, which
+      // left a coarse swipe invisible to the wheel path entirely.
+      if (!root.mashRecord(gname, now)) return
+
+      // Coarse turns a swipe into "go all the way that way", once per swipe. Checked
+      // before wheel mode, because there the steering keys would otherwise consume
+      // the press and no swipe could ever form.
+      if (mod === "c") {
+        if (root.clusterExtent) return          // this swipe has had its jump
+        var t = root.mashTrail
+        if (t.length >= 2) {
+          var edir = root.quantDir(t[t.length - 1].x - t[0].x, t[t.length - 1].y - t[0].y)
+          if (edir) {
+            root.clusterExtent = true
+            root.seekExtent(gname, edir, now)
+            return
+          }
+        }
+      }
 
       if (mdir && root.wheelHeld) {
-        // Wheel mode owns the steering keys: a press is a notch, holding one grows
-        // into a faster repeat.
-        root.scrollHoldName = name; root.scrollHoldAt = now
-        root.scrollFrac = 0; root.scrollReps = 0; root.scrollDets = 1
+        // The key that asked for top speed is still down. Its first auto-repeat
+        // arrives 250ms later, too late to count as a repeat, and would otherwise
+        // read as a fresh press and quietly downgrade the scroll it just started.
+        if (root.scrollUltra && gname === root.scrollHoldName) return
+
+        // Wheel mode owns the steering keys. Coarse asks at once for the size the
+        // ramp would otherwise climb to; fine turns the ramp off altogether.
+        var notches = mod === "c" ? Math.max(1, Math.round(root.scrollRepeatScaleMax)) : 1
+        root.scrollHoldName = gname; root.scrollHoldAt = now
+        root.scrollFrac = 0; root.scrollReps = 0; root.scrollDets = notches
         root.scrollUltra = false
+        root.scrollFine = (mod === "f")
         root.pokeIdle()
-        root.mashRecord(name, now)      // so a swipe can still form while scrolling
-        root.scrollPress(mdir, false)
+        root.scrollPress(mdir, notches)
         scrollTimer.interval = root.scrollStartMs
         scrollTimer.restart(); scrollKeyPoll.restart()
         return
       }
 
-      // Everything else goes through mashPress, so the press lands in the trail and
-      // the cluster stays honest.
-      root.mashPress(name, now)
+      root.mashPress(gname, mod, now)
       return
     }
 
@@ -1165,7 +1186,7 @@ Item {
     root.lastDownAt = now
     if (carry) root.startSweep(name, now, root.holdH)
     else root.beginHold("move", name, now)
-    root.moveStep(d, root.fineHeld ? root.finePx : root.baseStep, false)
+    root.moveStep(d, root.stepFor(""), false)
   }
 
   // ---- the debug overlay -----------------------------------------------------
@@ -1211,9 +1232,8 @@ Item {
   // The aux keys in a fixed order, skipping whatever this mode leaves out, so the
   // row depicts the mode in hand rather than a canonical keyboard.
   readonly property var dbgAuxOrder: [["lmb", "lmb"], ["mmb", "mmb"], ["rmb", "rmb"],
-                                      ["wheel", "wheel"], ["fine", "fine"],
-                                      ["cycle", "cycle"], ["debug", "debug"],
-                                      ["strategy", "strat"]]
+                                      ["wheel", "wheel"], ["cycle", "cycle"],
+                                      ["debug", "debug"], ["strategy", "strat"]]
   function dbgAuxRow() {
     var out = []
     for (var i = 0; i < root.dbgAuxOrder.length; i++) {
@@ -1221,7 +1241,16 @@ Item {
       if (k === undefined || k === "") continue
       out.push({ action: a, label: root.dbgAuxOrder[i][1], cap: root.dbgKeyCap(k) })
     }
+    // The two modifiers are not keys of this mode, but they change what every grid
+    // key does, so the row says which they are and lights the one last used.
+    out.push({ action: "mod:c", label: "coarse", cap: root.dbgModCap(root.coarseMod) })
+    out.push({ action: "mod:f", label: "fine", cap: root.dbgModCap(root.fineMod) })
     return out
+  }
+
+  function dbgModCap(m) {
+    if (!m) return ""
+    return m.slice(0, 3).toLowerCase()
   }
 
   // A key's face. Single characters and the punctuation table read as themselves;
@@ -1237,8 +1266,11 @@ Item {
   // Held keys report their real state, so the red lasts exactly as long as the
   // finger does. The momentary ones have no state to report and flash instead.
   function dbgAuxDown(action, now) {
+    if (action === "mod:c" || action === "mod:f") {
+      return root.lastMod === action.charAt(4)
+             && (now - root.lastModAt) < root.dbgAuxFlashMs
+    }
     if (action === "wheel") return root.wheelHeld
-    if (action === "fine") return root.fineHeld
     if (action === "lmb") return root.btnHeld === 1
     if (action === "rmb") return root.btnHeld === 2
     if (action === "mmb") return root.btnHeld === 3
@@ -1246,7 +1278,7 @@ Item {
   }
 
   function dbgAuxHeld() {
-    return root.wheelHeld || root.fineHeld || root.btnHeld !== 0
+    return root.wheelHeld || root.btnHeld !== 0
   }
 
   function dbgAuxPress(action, now) {
@@ -1403,13 +1435,12 @@ Item {
       var sp = Math.sqrt(root.ballVX * root.ballVX + root.ballVY * root.ballVY)
       if (sp < 1) { root.ballVX = 0; root.ballVY = 0; root.scrollAcc = 0; ballTimer.stop(); return }
       if (root.wheelHeld) {
-        var horiz = Math.abs(root.ballVX) > Math.abs(root.ballVY)
-        root.scrollAcc += (horiz ? root.ballVX : root.ballVY) * dt
+        var mag = Math.sqrt(root.ballVX * root.ballVX + root.ballVY * root.ballVY)
+        root.scrollAcc += root.scrollSign(root.ballVX, root.ballVY) * mag * dt
         var det = (root.scrollAcc / root.mashScrollPx) | 0
         if (det !== 0) {
           root.scrollAcc -= det * root.mashScrollPx
-          if (horiz) root.scrollX(det)
-          else root.scroll(-det)
+          root.scroll(det)
         }
         return                                // wheel instead of pointer, not as well
       }
@@ -1565,28 +1596,6 @@ Item {
         root.wheelHeld = false; root.scrollAcc = 0
         root.scrollHoldName = ""; root.scrollFrac = 0; root.scrollUltra = false
         scrollTimer.stop(); scrollKeyPoll.stop(); wheelPoll.stop()
-      }
-    }
-  }
-
-  Timer {
-    id: finePoll
-    interval: root.wheelPollMs
-    repeat: true
-    onTriggered: {
-      if (!root.active) { finePoll.stop(); root.fineHeld = false; return }
-      if (!fineProbe.running) fineProbe.running = true
-    }
-  }
-
-  Process {
-    id: fineProbe
-    command: ["hyprctl", "repl", root.keyDownExpr(root.modeKeys["fine"] || "")]
-    stdout: StdioCollector {
-      onStreamFinished: {
-        if (String(text).indexOf("true") >= 0) return
-        root.fineHeld = false
-        finePoll.stop()
       }
     }
   }

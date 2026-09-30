@@ -19,8 +19,8 @@ Moush gives you three ways to move, and you switch between them without thinking
   trackball, and the pointer rolls in the direction your hand travelled.
 
 On top of that, the pointer is magnetic to the edges of your windows. A single tap
-lands on an edge it would otherwise step past, and ending a swipe on a doubled key
-jumps straight to the next edge, however far away it is. Most of the places you want to
+lands on an edge it would otherwise step past, and holding Shift while you swipe
+sends it straight to the next edge, however far away it is. Most of the places you want to
 click are at or near an edge, so getting there stops being the slow part.
 
 ## What you need
@@ -82,8 +82,10 @@ Y U I O           the grid             W E R T
 
 8 9 0    left, middle, right button     5 4 3
 7  hold  scroll instead of move         6  hold
--  hold  one pixel per tap              2  hold
 ` shows or hides the display          Tab switches layout
+
+Shift  hold  bigger: 32px a tap, and a swipe goes to the next edge
+Ctrl   hold  smaller: 1px a tap, and a much shorter roll
 ```
 
 Everything not listed still types normally, so you can keep working with a session
@@ -96,8 +98,11 @@ Eight keys steer. In `mash` they are `I` up, `M` down, `J` left, `K` right, and
 `U` `O` `N` `,` for the four diagonals. The rest of the grid has no direction of
 its own and does nothing when tapped alone; those keys exist for mashing.
 
-**One tap is a small step.** Eight pixels, or six on each axis for a diagonal. Hold
-`-` and a tap becomes a single pixel, for when you need to be exact.
+**One tap is a small step.** Eight pixels, or six on each axis for a diagonal.
+
+**Two modifiers change the size of everything.** Hold **Shift** and a tap moves 32
+pixels instead of 8. Hold **Ctrl** and it moves one pixel, for when you need to be
+exact. Holding both counts as Ctrl.
 
 **Holding sweeps, and picks up speed.** The longer you hold, the faster it goes. A
 hold of about a second and a half crosses the screen; measured on a 1536-pixel-wide
@@ -105,22 +110,20 @@ screen, a 1.5 second hold travelled 1475 pixels. Let go and tap to fine-tune.
 Letting go of one direction and pressing another keeps the speed you had built up,
 so you can steer a sweep instead of restarting it.
 
-**Swipe, and strike the last key twice, to jump to the next edge.** Not a step and
-not a roll: the pointer goes straight to the nearest window edge in that direction,
-however far away. `J K K` jumps right, `M I I` jumps up, `O Y Y` jumps left.
+**Hold Shift and swipe to jump to the next edge.** Not a step and not a roll: the
+pointer goes straight to the nearest window edge in that direction, however far
+away. Shift with `J K` jumps right, with `M I` jumps up, with `O Y` jumps left.
 
 The direction is the swipe's own, so this does not depend on any key meaning an
-arrow. `Y O O` jumps right too, because `Y` to `O` points right. Any two keys that
-describe the direction you want will do, and the doubled key is what says "go all
-the way".
+arrow. Shift with `Y O` jumps right too, because `Y` to `O` points right. Any two
+keys that describe the direction you want will do.
 
-Tapping one key over and over never does this, at any speed, which is the point of
-asking for two different keys: rapid tapping is just rapid tapping, and stays a
-series of steps. The whole gesture has to be one swipe, meaning no gap longer than
-about a fifth of a second between presses.
+One jump per swipe, however many keys you cross: Shift with `J K`, `J K L` and
+`J K L ,` all land in the same place. To jump again, pause and swipe again.
 
-Keep swiping onto more doubled keys and it keeps going. `J K K K K` walks right
-edge by edge.
+Because a modifier says what you mean, nothing you do with the keys alone can
+trigger this by accident. Tapping one key over and over is just tapping, at any
+speed.
 
 **Run out of edges and it crosses into the next window, and focuses it.** Walking
 left out of a window, the pointer stops on that window's left edge, then appears on
@@ -178,10 +181,15 @@ after 0.8s   1.0x      still steady
        7.5s  10.0x
 ```
 
-For a long document, the same gesture works here: swipe up or down and hold the
-doubled key down at the end, as in `M I I`. Scrolling starts at a hundred times the
-base rate immediately and stays there until you let go. Sideways, the gesture goes
-to the end of the view instead.
+**The modifiers work here too.** Hold Shift and a single press scrolls ten notches
+instead of one, the size the ramp would otherwise take seconds to reach. Hold Ctrl
+and the ramp switches off: every repeat stays one notch for as long as you hold it.
+
+For a long document, hold Shift and swipe. Scrolling goes to a hundred times the
+base rate at once and stays there while you keep the last key of the swipe down.
+
+**Every direction scrolls one axis.** Up and right both scroll one way, down and
+left the other, so whichever keys fall under your fingers the sense is the same.
 
 ## The display
 
@@ -206,7 +214,9 @@ Each layout declares its own keys, so the two can share nothing at all:
 
 ```lua
 MOUSH = {
-  carry_ms = 175,      -- press a new direction this soon and keep your speed
+  carry_ms   = 175,       -- press a new direction this soon and keep your speed
+  coarse_mod = "SHIFT",   -- hold for bigger
+  fine_mod   = "CTRL",    -- hold for smaller
 
   modes = {
     mash = {
@@ -225,7 +235,6 @@ MOUSH = {
 
       buttons = { lmb = "8", mmb = "9", rmb = "0" },
       wheel   = "7",        -- hold to scroll
-      fine    = "minus",    -- hold for one-pixel taps
       cycle   = "TAB",      -- next layout
       debug   = "grave",    -- show or hide the display
 
@@ -249,6 +258,21 @@ numbers work too, as long as you are consistent.
 
 Only keys in `dirs` steer on their own. Leave a key out of `dirs` and it is purely
 part of the grid.
+
+### The two modifiers
+
+`coarse_mod` and `fine_mod` take any Hyprland modifier name: `SHIFT`, `CTRL`,
+`ALT`, `SUPER`. They apply only to the grid keys, so a modifier still reaches the
+application when you use it with a mouse button: Shift and a click is still a
+shift-click.
+
+The flip side is that Shift and Ctrl are no longer invisible to Moush while a
+session is open. Ctrl with a scroll still zooms in your browser, but it also means
+"fine" here, so the scrolling will not accelerate while you hold it. If that gets
+in the way, move the modifier to `ALT`.
+
+`SUPER` and `ALT` are left alone by default, so those combinations still reach your
+normal bindings during a session.
 
 ### Leaving things out
 
@@ -281,8 +305,8 @@ Lower it and speed starts to matter: at `0.01`, the same four presses travelled
 
 ```lua
 scroll_repeat_scale_min   = 1,    -- wheel notches per repeat to begin with
-scroll_repeat_scale_max   = 10,   -- and once it has finished speeding up
-scroll_repeat_scale_ultra = 100,  -- the rate a doubled key held down asks for
+scroll_repeat_scale_max   = 10,   -- once it has finished, and what Shift jumps to
+scroll_repeat_scale_ultra = 100,  -- the rate a coarse swipe asks for
 scroll_increase_delay     = 1.5,  -- seconds steady before it starts climbing
 scroll_increase_time      = 5,    -- seconds it takes to climb
 scroll_repeat_ms          = 60,   -- how often it repeats
@@ -298,9 +322,9 @@ and keep the speed you had built up.
 
 What holds a swipe together is the gap between its presses: leave more than about a
 fifth of a second and it becomes two gestures rather than one. That single rule
-governs both mashing and the jump-to-edge gesture, so there is no separate
-double-tap window to tune, and nothing you can tap fast enough to trigger by
-accident.
+governs both mashing and the jump-to-edge gesture, and since the jump is asked for
+with a modifier rather than a rhythm, there is no tapping speed that can trigger it
+by accident.
 
 ### The entry chord
 

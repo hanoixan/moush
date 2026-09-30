@@ -768,8 +768,22 @@ Item {
     // Sub-pixel steps accumulate in curX/curY; only tell Hyprland when the
     // rounded position actually changes, so a slow crawl is not a dispatch storm.
     if (ix === root.sentX && iy === root.sentY) return
+    var dx = ix - root.sentX, dy = iy - root.sentY
+    var known = root.sentX >= 0 && root.sentY >= 0
     root.sentX = ix
     root.sentY = iy
+    // With a button down this has to move the *device*, not the cursor. A
+    // compositor warp relocates the pointer without producing motion events, so a
+    // client sees button-down, nothing, button-up — which is why a drag selected
+    // nothing until the button came back up. Relative motion through ydotool is
+    // real input and arrives as motion, so selection follows live.
+    //
+    // It is exact only because bindings.lua pins the synthetic device to a flat
+    // acceleration profile; with acceleration on, asking for 10px moved 17.
+    if (root.btnHeld !== 0 && known) {
+      Quickshell.execDetached(["ydotool", "mousemove", "-x", String(dx), "-y", String(dy)])
+      return
+    }
     root.hypr("hl.dsp.cursor.move({ x = " + ix + ", y = " + iy + " })")
   }
 

@@ -35,6 +35,29 @@ release          btn=0
 exit while held  btn=0                          never stranded
 ```
 
+**A drag moves the device, not the cursor.** Everywhere else the pointer is placed
+by `hl.dsp.cursor.move`, which is exact and costs nothing. But a warp produces no
+motion events, so a client sees a drag as button-down, silence, button-up — the
+selection only appeared once the button came back up. With a button held, movement
+therefore goes out as relative motion through `ydotool`, which is real input and
+arrives as motion, so a selection follows live.
+
+That needs the motion to be exact, since the plugin works out the delta itself, so
+`bindings.lua` pins the synthetic device to a flat acceleration profile:
+
+```lua
+hl.device({ name = "ydotoold-virtual-device-1", accel_profile = "flat", sensitivity = 0 })
+```
+
+Without it, asking for 10px moved 17 and asking for 50 moved 46. Only that device
+is touched; the real mouse and trackpad keep their own settings. Measured with it
+in place, the plugin's tracked position and the real cursor stay identical through
+a drag, including a 500px sweep while the button is held.
+
+There is no dispatcher for this. `hl.dsp.cursor` offers only `move` and
+`move_to_corner`, and the `drag` that exists is `hl.dsp.window.drag` — Hyprland's
+own interactive window move, not a pointer drag a client would see.
+
 Like every other held key it is polled rather than waited on, and a button that
 has claimed to be down for longer than `btnMaxMs` is let up regardless — a lost
 release must not leave the pointer dragging everything it touches.

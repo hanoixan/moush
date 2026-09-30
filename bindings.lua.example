@@ -1,3 +1,11 @@
+-- Dragging moves the pointer through ydotool rather than by warping it, because a
+-- warp produces no motion events and a client sees a drag as button-down then
+-- button-up with nothing in between. The plugin works out the delta itself, so
+-- that motion has to be exact: with acceleration on, asking for 10px moved 17.
+-- Flat profile on the synthetic device only — the real mouse and trackpad keep
+-- whatever they had. The name is ydotoold's; check `hyprctl devices` if it differs.
+hl.device({ name = "ydotoold-virtual-device-1", accel_profile = "flat", sensitivity = 0 })
+
 -- Mouse keys: SUPER + M enters. A short press starts the session when the chord
 -- is released and it exits after 2s idle; holding it past 500ms starts the
 -- session right then and latches until you hit SUPER + M again.

@@ -49,6 +49,19 @@ hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
 --                          gesture has been. Still clipped by the cluster, so it
 --                          is the last N presses of the gesture in progress. The
 --                          debug overlay shows exactly these, and no more.
+--   Held in wheel mode, a direction key repeats, and the repeats grow, so the
+--   same key serves a line and a page. Flat at first so a short hold stays
+--   precise, then ramping, then flat again at the top.
+--
+--   scroll_repeat_scale_min  detents per repeat to begin with
+--   scroll_repeat_scale_max  and once the ramp has run out
+--   scroll_increase_delay    seconds at the minimum before the ramp starts
+--   scroll_repeat_ms         between repeats. The plugin drives these itself:
+--                            Hyprland stops repeating a key once a second bound
+--                            key is held, and in wheel mode 7 always is.
+--   scroll_increase_time     seconds the ramp takes to reach the maximum
+--                            (both in seconds, unlike the _ms settings above)
+--
 --   mash_nudge             whether a lone tap nudges the pointer a few pixels away
 --                          from the middle of the grid, instead of doing nothing.
 --                          A tap that turns into a swipe keeps its nudge, which is
@@ -85,6 +98,11 @@ MOUSEKEYS = {
   mash_gain = 20,
   mash_vmax = 1000,
   mash_samples = 4,
+  scroll_repeat_scale_min = 1,
+  scroll_repeat_scale_max = 10,
+  scroll_increase_delay = 1.5,
+  scroll_increase_time = 5,
+  scroll_repeat_ms = 60,
   mash_nudge = false,
   mash_nudge_inner = 1,
   mash_nudge_outer = 5,
@@ -264,7 +282,10 @@ local function mousekeys_mash()
     mousekeys_bind("8", hl.dsp.global("mousekeys:lmb"), {})
     mousekeys_bind("9", hl.dsp.global("mousekeys:mmb"), {})
     mousekeys_bind("0", hl.dsp.global("mousekeys:rmb"), {})
-    mousekeys_bind("7", hl.dsp.global("mousekeys:wheel"), { repeating = true })
+    -- Not repeating: wheel mode is kept alive by polling, and a repeating bind
+    -- here would hold Hyprland's repeat slot, so the direction key pressed while
+    -- it is down would never repeat and could never ramp.
+    mousekeys_bind("7", hl.dsp.global("mousekeys:wheel"), {})
     -- Held, - makes every step a single pixel instead of baseStep.
     mousekeys_bind("minus", hl.dsp.global("mousekeys:fine"), { repeating = true })
     -- What the buttons used to be: absorbed, so a stray reach does nothing.

@@ -386,6 +386,39 @@ accumulates into detents. A discrete press is given its own detent because
 accumulating an 8px step against a detent's 90 would take a dozen presses to move
 the page once.
 
+**Held, a direction key repeats, and the repeats grow.** Flat at
+`scroll_repeat_scale_min` for `scroll_increase_delay`, then ramping to
+`scroll_repeat_scale_max` over `scroll_increase_time`, then flat again — so the
+same key serves a line and a page.
+
+```lua
+scroll_repeat_scale_min = 1,     -- detents per repeat to begin with
+scroll_repeat_scale_max = 10,    -- and once the ramp has run out
+scroll_increase_delay   = 1.5,   -- seconds flat before it starts
+scroll_increase_time    = 5,     -- seconds the ramp takes
+scroll_repeat_ms        = 60,    -- between repeats
+```
+
+The two ramp timings are in **seconds**, unlike the `_ms` settings elsewhere.
+
+```
+   t     +reps  +detents  det/rep  scale
+ 1.2s      15        15     1.0     1.00   flat through the delay
+ 2.3s      19        27     1.4     2.42   ramping
+ 3.5s      20        69     3.5     4.52
+ 5.9s      19       151     7.9     8.95
+ 7.1s      19       185     9.7    10.00   capped
+ 9.3s      18       180    10.0    10.00
+```
+
+The repeats are the plugin's own, not the compositor's. Hyprland stops repeating a
+key once a second bound key is held, and in wheel mode `7` always is — so a
+key-repeat ramp produced exactly one detent and then nothing, while the scale went
+on climbing against a clock. The release is polled for the same reason.
+
+Fractional scales are carried rather than dropped, so a scale under 1 still
+scrolls eventually and the ramp climbs smoothly instead of in visible steps.
+
 `7` has no dependable release, so it is polled — and the poll must be told which
 key to ask about. When the wheel moved from `w` to `7` the binding moved but the
 published keysym did not, so the poll asked whether `w` was down, found it was not,

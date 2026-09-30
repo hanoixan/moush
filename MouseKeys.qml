@@ -118,6 +118,23 @@ Item {
   // Grid positions that double as directions on a lone press. Published by
   // bindings.lua, which owns which key sits where.
   property var mashDirs: ({})
+  // Held in wheel mode, a direction key repeats, and the repeats grow: flat for
+  // scrollIncreaseDelay, then ramping to the maximum over scrollIncreaseTime and
+  // staying there. Seconds, not milliseconds — the names say so.
+  property real scrollRepeatScaleMin: 1
+  property real scrollRepeatScaleMax: 10
+  property real scrollIncreaseDelay: 1.5
+  property real scrollIncreaseTime: 5
+  // Hyprland stops repeating a key as soon as a second bound key is held, and in
+  // wheel mode 7 always is, so the repeat has to be generated here and the release
+  // asked about. These are that clock, not the compositor's.
+  property int scrollRepeatMs: 60             // between self-driven repeats
+  readonly property int scrollStartMs: 250    // before the first, as a key would
+  property string scrollHoldName: ""          // the key being leaned on
+  property real scrollHoldAt: 0               // when it went down
+  property real scrollFrac: 0                 // detents owed but not yet whole
+  property int scrollReps: 0                  // diagnostic: repeats seen this hold
+  property int scrollDets: 0                  // diagnostic: detents actually sent
   property bool fineHeld: false               // the fine modifier is down
   readonly property real finePx: 1            // ...so a press steps this far instead
   // Held rather than tapped, a nudge repeats — the same push, over and over, so
@@ -340,6 +357,11 @@ Item {
       + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
       + " gain=" + root.mashGain.toFixed(2) + " vmax=" + root.mashVMax
       + " samples=" + root.mashSamples
+      + " sramp=" + root.scrollRepeatScaleMin + "-" + root.scrollRepeatScaleMax
+      + "/" + root.scrollIncreaseDelay + "s+" + root.scrollIncreaseTime + "s"
+      + " sreps=" + root.scrollReps + "/" + root.scrollDets
+      + " sscale=" + (root.scrollHoldName === "" ? "-"
+          : root.scrollScaleAt(Date.now() - root.scrollHoldAt).toFixed(2))
       + " fine=" + root.fineHeld + " dirs=" + Object.keys(root.mashDirs).length
       + " nudge=" + root.mashNudge + "/" + root.nudgeInnerPx + "-" + root.nudgeOuterPx
       + " rings=" + root.nudgeInnerNames.length + "/" + root.nudgeOuterNames.length
@@ -635,6 +657,38 @@ Item {
     var horiz = Math.abs(dir[0]) > Math.abs(dir[1])
     var sign = horiz ? (dir[0] > 0 ? 1 : -1) : (dir[1] > 0 ? 1 : -1)
     var n = unbounded ? root.scrollEndDetents : 1
+    if (horiz) root.scrollX(sign * n)
+    else root.scroll(-sign * n)
+  }
+
+  // 1x while the hold is young, then a straight ramp to the maximum, then flat.
+  function scrollScaleAt(ms) {
+    var lo = root.scrollRepeatScaleMin, hi = root.scrollRepeatScaleMax
+    var delay = root.scrollIncreaseDelay * 1000, span = root.scrollIncreaseTime * 1000
+    if (ms <= delay) return lo
+    if (span <= 0) return hi
+    var t = (ms - delay) / span
+    return t >= 1 ? hi : lo + (hi - lo) * t
+  }
+
+  // Each repeat is worth scaleAt() detents. The scale is fractional, so what does
+  // not reach a whole detent is carried rather than dropped — otherwise anything
+  // under 1x would scroll not at all, and the ramp would move in visible steps.
+  function scrollRepeat(name, dir, now) {
+    if (name !== root.scrollHoldName) {        // a different key restarts the ramp
+      root.scrollHoldName = name
+      root.scrollHoldAt = now
+      root.scrollFrac = 0
+    }
+    root.pokeIdle()
+    root.scrollReps += 1
+    root.scrollFrac += root.scrollScaleAt(now - root.scrollHoldAt)
+    var n = Math.floor(root.scrollFrac)
+    if (n < 1) return
+    root.scrollFrac -= n
+    root.scrollDets += n
+    var horiz = Math.abs(dir[0]) > Math.abs(dir[1])
+    var sign = horiz ? (dir[0] > 0 ? 1 : -1) : (dir[1] > 0 ? 1 : -1)
     if (horiz) root.scrollX(sign * n)
     else root.scroll(-sign * n)
   }
@@ -1308,7 +1362,6 @@ Item {
       // pixels were already spent, which are lost in it.
       if (n < 2) {
         var dn = root.mashDirs[name]
-        if (dn && root.wheelHeld) { root.scrollPress(root.actionDirs[dn], false); return }
         if (dn) {
           root.moveDir = root.actionDirs[dn]
           root.collectEdges()
@@ -1500,6 +1553,23 @@ Item {
       // stays honest. Returning early used to skip that, which left clusterN stale
       // and lost the first point of any sweep that opened with a direction key.
       var mdir = root.mashDirs[name] ? root.actionDirs[root.mashDirs[name]] : null
+      if (mdir && root.wheelHeld) {
+        // Wheel mode owns the direction keys outright: first press a detent, held
+        // a growing repeat, struck twice the end of the view.
+        if (repeat) { root.scrollRepeat(name, mdir, now); return }
+        if (same && fastTap) { root.scrollPress(mdir, true); return }
+        root.scrollHoldName = name
+        root.scrollHoldAt = now
+        root.scrollFrac = 0
+        root.scrollReps = 0
+        root.scrollDets = 1                    // the press itself
+        root.pokeIdle()
+        root.scrollPress(mdir, false)
+        scrollTimer.interval = root.scrollStartMs
+        scrollTimer.restart()
+        scrollKeyPoll.restart()
+        return
+      }
       if (mdir && repeat && root.activeKind === "move") {
         root.lastDownAt = now                   // held: sustain the sweep
         root.confirmHold(now, root.repeatGapMs)
@@ -1507,7 +1577,6 @@ Item {
       }
       if (mdir && same && fastTap) {            // the same key twice: skitter
         root.pokeIdle()
-        if (root.wheelHeld) { root.scrollPress(mdir, true); return }
         root.moveDir = mdir
         root.collectEdges()
         root.moveStep(mdir, root.fineHeld ? root.finePx : root.baseStep, true)
@@ -1647,6 +1716,11 @@ Item {
       + '.. " mash_inner=" .. tostring(((m.keys or {}).mash or {}).inner or "") '
       + '.. " mash_outer=" .. tostring(((m.keys or {}).mash or {}).outer or "") '
       + '.. " mash_dirs=" .. tostring(((m.keys or {}).mash or {}).dirs or "") '
+      + '.. " scroll_repeat_scale_min=" .. tostring(m.scroll_repeat_scale_min or "") '
+      + '.. " scroll_repeat_scale_max=" .. tostring(m.scroll_repeat_scale_max or "") '
+      + '.. " scroll_increase_delay=" .. tostring(m.scroll_increase_delay or "") '
+      + '.. " scroll_increase_time=" .. tostring(m.scroll_increase_time or "") '
+      + '.. " scroll_repeat_ms=" .. tostring(m.scroll_repeat_ms or "") '
       + '.. " mash_nudge_repeat=" .. tostring(m.mash_nudge_repeat) '
       + '.. " mash_nudge_delay_ms=" .. tostring(m.mash_nudge_delay_ms or "") '
       + '.. " mash_nudge_rate_ms=" .. tostring(m.mash_nudge_rate_ms or "")']
@@ -1706,13 +1780,19 @@ Item {
             continue
           }
           if (kv[0] === "mash_gain" || kv[0] === "mash_grip_friction"
-              || kv[0] === "mash_nudge_inner" || kv[0] === "mash_nudge_outer") {
+              || kv[0] === "mash_nudge_inner" || kv[0] === "mash_nudge_outer"
+              || kv[0] === "scroll_repeat_scale_min" || kv[0] === "scroll_repeat_scale_max"
+              || kv[0] === "scroll_increase_delay" || kv[0] === "scroll_increase_time") {
             var g = parseFloat(kv[1])
             if (!(g > 0)) continue
             if (kv[0] === "mash_gain") root.mashGain = g
             else if (kv[0] === "mash_grip_friction") root.mashGripFriction = g
             else if (kv[0] === "mash_nudge_inner") root.nudgeInnerPx = g
-            else root.nudgeOuterPx = g
+            else if (kv[0] === "mash_nudge_outer") root.nudgeOuterPx = g
+            else if (kv[0] === "scroll_repeat_scale_min") root.scrollRepeatScaleMin = g
+            else if (kv[0] === "scroll_repeat_scale_max") root.scrollRepeatScaleMax = g
+            else if (kv[0] === "scroll_increase_delay") root.scrollIncreaseDelay = g
+            else root.scrollIncreaseTime = g
             continue
           }
           var v = parseInt(kv[1], 10)
@@ -1733,6 +1813,8 @@ Item {
             root.nudgeDelayMs = v
           } else if (kv[0] === "mash_nudge_rate_ms") {
             root.nudgeRateMs = v
+          } else if (kv[0] === "scroll_repeat_ms") {
+            root.scrollRepeatMs = v
           }
         }
       }
@@ -1877,6 +1959,54 @@ Item {
     }
   }
 
+  // The repeat wheel mode cannot get from the compositor.
+  Timer {
+    id: scrollTimer
+    interval: root.scrollStartMs
+    repeat: true
+    onTriggered: {
+      if (!root.active || !root.wheelHeld || root.scrollHoldName === "") {
+        scrollTimer.stop(); return
+      }
+      scrollTimer.interval = root.scrollRepeatMs       // the first one waited longer
+      var dn = root.mashDirs[root.scrollHoldName]
+      if (!dn) { scrollTimer.stop(); return }
+      root.scrollRepeat(root.scrollHoldName, root.actionDirs[dn], Date.now())
+    }
+  }
+
+  Timer {
+    id: scrollKeyPoll
+    interval: root.wheelPollMs
+    repeat: true
+    onTriggered: {
+      if (!root.active || !root.wheelHeld || root.scrollHoldName === "") {
+        scrollKeyPoll.stop(); scrollTimer.stop(); return
+      }
+      if (!scrollKeyProbe.running) scrollKeyProbe.running = true
+    }
+  }
+
+  // Which key is being leaned on comes from the labels bindings.lua publishes, so
+  // the spelling stays in the one place that knows it.
+  Process {
+    id: scrollKeyProbe
+    command: ["hyprctl", "repl",
+      'local s = "' + (root.mashLabels[root.scrollHoldName] || "") + '" '
+      + 'if s == "" then return "false" end '
+      + 'for _, n in ipairs({ s, s:lower(), s:sub(1,1):upper() .. s:sub(2):lower() }) do '
+      + 'if hl.is_key_down(n) then return "true" end end return "false"']
+    stdout: StdioCollector {
+      onStreamFinished: {
+        if (String(text).indexOf("true") >= 0) return
+        root.scrollHoldName = ""                      // let go: the ramp is over
+        root.scrollFrac = 0
+        scrollTimer.stop()
+        scrollKeyPoll.stop()
+      }
+    }
+  }
+
   Timer {
     id: finePoll
     interval: root.wheelPollMs
@@ -1925,6 +2055,10 @@ Item {
         if (String(text).indexOf("true") >= 0) return
         root.wheelHeld = false
         root.scrollAcc = 0
+        root.scrollHoldName = ""               // the ramp ends with wheel mode
+        root.scrollFrac = 0
+        scrollTimer.stop()
+        scrollKeyPoll.stop()
         wheelPoll.stop()
       }
     }

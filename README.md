@@ -110,13 +110,50 @@ direction, the keys form a grid under your right hand, and mashing across them
 rolls the pointer the way dragging a finger rolls a trackball.
 
 ```
- 7 8 9 0 -          a  right click       w (held)  the mash becomes a wheel
-Y U I O P [         s  middle click      tab       next keymap
- H J K L ; '        d  left click        `         the debug display
-  N M , . /         z  next strategy     5 6 R T F G V B  inert, absorbing a stray reach
+ 7 8 9 0 -          7 (held) wheel mode     tab  next keymap
+Y U I O P [         8 9 0   left/middle/right click
+ H J K L ; '        - (held) 1px steps      `    the debug display
+  N M , . /         z       next strategy   5 6 R T F G V B a s d w  inert
 ```
 
 Everything else passes through, so typing still works.
+
+**Eight of the grid keys double as directions.** Struck alone, a key steers with
+the arrow keys' own model behind it — `baseStep`, acceleration while held, edge
+snapping, and a double-tap that skitters to the next edge. Struck as part of a
+sweep it is a point in space again.
+
+```
+  U  I  O      up-left    up     up-right
+  J  .  K      left              right
+  N  M  ,      down-left  down   down-right
+```
+
+```
+lone I                        (  +0,  -8)   a step, snapping to an edge
+lone U                        (  -6,  -6)   diagonal, normalised
+I then U                      (-299,  -8)   two keys: it was a sweep
+I I fast                      (  +0,-462)   double-tap: skitter
+hold I for 0.9s               (  +0,-500)   accelerating sweep
+```
+
+They cannot be separately bound as direction keys — Hyprland fires one dispatcher
+per key, and these are already grid keys — so the plugin decides per press. Only
+two cases are settled before the mash machinery sees the press: a repeat, which
+sustains a sweep, and the same key struck twice quickly, which skitters. Everything
+else goes through as a normal press, so the cluster stays honest and a sweep that
+opens with a direction key keeps its first point.
+
+**Diagonals snap on both axes.** A press lands on the nearest edge to the left
+*and* the nearest above; a double-tap runs both to their limits, which is the
+corner. The cardinal path cannot express that — it picks one axis and ignores the
+other — so diagonals take their own route through `moveStep`. They do not cross
+off-screen: leaving by a corner has no single direction to hand the compositor.
+
+**Held, `-` makes every step one pixel** instead of `baseStep`, for placing the
+cursor exactly. It applies to the discrete step, not to the speed of a sweep. Like
+the wheel key it is polled rather than waited on, since a release is not reliably
+delivered.
 
 **The grid is a binding, not code.** Each position is an action named
 `m<x4>_<y>` — row `y`, column `x4` in quarter-key steps — so `bindings.lua` says

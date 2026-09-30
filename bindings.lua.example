@@ -85,7 +85,7 @@ MOUSEKEYS = {
   mash_gain = 20,
   mash_vmax = 1000,
   mash_samples = 4,
-  mash_nudge = true,
+  mash_nudge = false,
   mash_nudge_inner = 1,
   mash_nudge_outer = 5,
   mash_nudge_repeat = true,
@@ -168,8 +168,10 @@ end
 --     N M , . /         y=3, x4 =  3  7 11 15 19     (+0.75)
 --
 -- Re-measuring this for a differently-staggered keyboard is an edit here alone.
+-- The number row is no longer part of the grid: 7 is the wheel, 8 9 0 are the
+-- mouse buttons and - is the fine modifier. y still starts at 0 there, so the
+-- remaining rows keep their coordinates and their action names unchanged.
 local mash_grid = {
-  { y = 0, keys = { ["7"] = 2, ["8"] = 6, ["9"] = 10, ["0"] = 14, minus = 18 } },
   { y = 1, keys = { Y = 0, U = 4, I = 8, O = 12, P = 16, bracketleft = 20 } },
   { y = 2, keys = { H = 1, J = 5, K = 9, L = 13, semicolon = 17, apostrophe = 21 } },
   { y = 3, keys = { N = 3, M = 7, comma = 11, period = 15, slash = 19 } },
@@ -188,6 +190,17 @@ local mash_null = { "5", "6", "R", "T", "F", "G", "V", "B" }
 --       Y  U  I  O  P  [        I O inner, Y [ outer, U P between
 --        H  J  K  L  ;  '       K L inner, H ' outer, J ; between
 --         N  M  ,  .  /         outer
+-- Eight of the grid's keys double as directions. Struck alone they steer, with
+-- the arrows' own model behind them — a step, acceleration while held, edge
+-- snapping, and a double-tap that skitters to the next edge or corner. Struck as
+-- part of a sweep they are points in space again.
+--
+--   U  I  O      up-left    up     up-right
+--   J  .  K      left              right
+--   N  M  ,      down-left  down   down-right
+local mash_dirs = { I = "up", M = "down", J = "left", K = "right",
+                    U = "upleft", O = "upright", N = "downleft", comma = "downright" }
+
 local mash_inner = { "I", "O", "K", "L" }
 local mash_outer = { "7", "8", "9", "0", "minus", "bracketleft", "apostrophe",
                      "slash", "period", "comma", "M", "N", "H", "Y" }
@@ -200,6 +213,15 @@ local function mash_action(key)
       if k == key then return "m" .. x4 .. "_" .. row.y end
     end
   end
+end
+
+local function mash_dir_map()
+  local out = {}
+  for key, dir in pairs(mash_dirs) do
+    local a = mash_action(key)
+    if a then out[#out + 1] = a .. ":" .. dir end
+  end
+  return table.concat(out, ",")
 end
 
 local function mash_ring(keys)
@@ -217,33 +239,37 @@ local function mousekeys_mash()
   -- the same reason the other keymaps publish theirs: when two are held, repeats
   -- stop and only is_key_down can say which is still down.
   MOUSEKEYS.keys.mash = { wheel = "W", labels = {},    -- wheel is polled; labels
-                          up = "UP", down = "DOWN", left = "LEFT", right = "RIGHT",
+                          fine = "minus", dirs = mash_dir_map(),
                           inner = mash_ring(mash_inner), outer = mash_ring(mash_outer) }
   local labels = MOUSEKEYS.keys.mash.labels             -- name the debug display's cells
   hl.define_submap("mousekeys-mash", function()
     hl.bind("CTRL + ALT + Escape", hl.dsp.submap("reset"))
     for _, row in ipairs(mash_grid) do
-      for key, x2 in pairs(row.keys) do
-        labels["m" .. x2 .. "_" .. row.y] = key
-        -- Not repeating: a held key would restrike the same point forever, and
-        -- only key-down is meant to steer the ball.
-        mousekeys_bind(key, hl.dsp.global("mousekeys:m" .. x2 .. "_" .. row.y), {})
+      for key, x4 in pairs(row.keys) do
+        labels["m" .. x4 .. "_" .. row.y] = key
+        -- Repeating, so holding one of the direction keys sweeps the way an arrow
+        -- does. A repeat is the same key still down rather than a new point, and
+        -- the plugin reads it that way instead of restriking the grid.
+        mousekeys_bind(key, hl.dsp.global("mousekeys:m" .. x4 .. "_" .. row.y),
+                       { repeating = true })
       end
     end
     for _, key in ipairs(mash_null) do
       mousekeys_bind(key, hl.dsp.global("mousekeys:noop"), {})
     end
-    for _, key in ipairs({ "A", "S", "D", "W", "TAB", "Z", "grave" }) do
+    for _, key in ipairs({ "7", "8", "9", "0", "minus", "A", "S", "D", "W",
+                           "TAB", "Z", "grave" }) do
     end
-    mousekeys_bind("A", hl.dsp.global("mousekeys:rmb"), {})
-    mousekeys_bind("S", hl.dsp.global("mousekeys:mmb"), {})
-    mousekeys_bind("D", hl.dsp.global("mousekeys:lmb"), {})
-    mousekeys_bind("W", hl.dsp.global("mousekeys:wheel"), { repeating = true, })
-    -- Cartesian control alongside the trackball: the arrows keep their own model
-    -- here, acceleration, edge snapping and double-tap skitter included, for the
-    -- moves mashing is clumsy at.
-    for action, key in pairs({ up = "UP", down = "DOWN", left = "LEFT", right = "RIGHT" }) do
-      mousekeys_bind(key, hl.dsp.global("mousekeys:" .. action), { repeating = true })
+    -- Buttons and the wheel move to the number row, clear of the mashing hand.
+    mousekeys_bind("8", hl.dsp.global("mousekeys:lmb"), {})
+    mousekeys_bind("9", hl.dsp.global("mousekeys:mmb"), {})
+    mousekeys_bind("0", hl.dsp.global("mousekeys:rmb"), {})
+    mousekeys_bind("7", hl.dsp.global("mousekeys:wheel"), { repeating = true })
+    -- Held, - makes every step a single pixel instead of baseStep.
+    mousekeys_bind("minus", hl.dsp.global("mousekeys:fine"), { repeating = true })
+    -- What the buttons used to be: absorbed, so a stray reach does nothing.
+    for _, key in ipairs({ "A", "S", "D", "W" }) do
+      mousekeys_bind(key, hl.dsp.global("mousekeys:noop"), {})
     end
     mousekeys_bind("TAB", hl.dsp.global("mousekeys:cycle"), {})
     mousekeys_bind("grave", hl.dsp.global("mousekeys:debug"), {})

@@ -115,6 +115,11 @@ Item {
   property var nudgeInnerNames: []            // action names, published by bindings.lua
   property var nudgeOuterNames: []
   property string nudgeName: ""               // the key the last nudge came from
+  // Grid positions that double as directions on a lone press. Published by
+  // bindings.lua, which owns which key sits where.
+  property var mashDirs: ({})
+  property bool fineHeld: false               // the fine modifier is down
+  readonly property real finePx: 1            // ...so a press steps this far instead
   // Held rather than tapped, a nudge repeats — the same push, over and over, so
   // the grid can be leaned on for a longer adjustment. Confirmed by asking whether
   // the key is still down, since a release is not reliably delivered.
@@ -146,7 +151,10 @@ Item {
   // further quarter to the right again. That puts the entire spatial layout in
   // bindings.lua — which physical key sits at which grid position is a binding,
   // like everything else here.
-  readonly property var mashCols: [[2, 6, 10, 14, 18],         // 7 8 9 0 -     x.50
+  // Row 0 is gone: 7 8 9 0 are the wheel and the mouse buttons now, and - is the
+  // fine modifier, so none of them is a point in space any more. y still counts
+  // from the number row so the coordinates, and the action names, do not shift.
+  readonly property var mashCols: [[],                         // 7 8 9 0 -     buttons
                                    [0, 4, 8, 12, 16, 20],      // Y U I O P [   x.00
                                    [1, 5, 9, 13, 17, 21],      // H J K L ; '   x.25
                                    [3, 7, 11, 15, 19]]         // N M , . /     x.75
@@ -160,10 +168,18 @@ Item {
   readonly property var actions: ["up", "down", "left", "right",
                                   "lmb", "mmb", "rmb",
                                   "scrollup", "scrolldown", "cycle",
-                                  "noop", "wheel", "debug",
-                                  "strategy"].concat(root.mashActions)
+                                  "noop", "wheel", "debug", "strategy", "fine",
+                                  "upleft", "upright", "downleft",
+                                  "downright"].concat(root.mashActions)
+  // Diagonals are normalised, so one press covers the same ground as a cardinal
+  // press rather than 1.41 times as much.
+  readonly property real diag: 0.70710678
   readonly property var actionDirs: ({ "up": [0, -1], "down": [0, 1],
-                                       "left": [-1, 0], "right": [1, 0] })
+                                       "left": [-1, 0], "right": [1, 0],
+                                       "upleft": [-root.diag, -root.diag],
+                                       "upright": [root.diag, -root.diag],
+                                       "downleft": [-root.diag, root.diag],
+                                       "downright": [root.diag, root.diag] })
 
   // Chord keys. Super is only ever the chord; Left Alt is too, and since no
   // button is a modifier any more it has no second meaning to disambiguate.
@@ -324,6 +340,7 @@ Item {
       + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
       + " gain=" + root.mashGain.toFixed(2) + " vmax=" + root.mashVMax
       + " samples=" + root.mashSamples
+      + " fine=" + root.fineHeld + " dirs=" + Object.keys(root.mashDirs).length
       + " nudge=" + root.mashNudge + "/" + root.nudgeInnerPx + "-" + root.nudgeOuterPx
       + " rings=" + root.nudgeInnerNames.length + "/" + root.nudgeOuterNames.length
       + " nudged=" + (root.nudgeName === "" ? "-" : root.nudgeName)
@@ -583,7 +600,25 @@ Item {
   // Bounded, only edges within the travel distance count, so movement is
   // magnetic without being teleportive. Unbounded, the cursor lands on the next
   // edge however far off it is — that is the skitter.
+  // A diagonal is two axes at once, so it snaps on each independently: a press
+  // lands on the nearest edge to the left *and* the nearest above, and a
+  // double-tap runs both to their limits, which is the corner. The axis-at-a-time
+  // path below cannot express that — it picks one axis and ignores the other.
+  function moveStepDiag(dir, px, unbounded) {
+    var sx = dir[0] > 0 ? 1 : -1, sy = dir[1] > 0 ? 1 : -1
+    var reach = unbounded ? 0 : px
+    var ex = root.nextEdge(root.edgesX, root.curX, root.curY, sx, reach)
+    var ey = root.nextEdge(root.edgesY, root.curY, root.curX, sy, reach)
+    var nx = isNaN(ex) ? (unbounded ? root.curX : root.curX + dir[0] * px) : ex
+    var ny = isNaN(ey) ? (unbounded ? root.curY : root.curY + dir[1] * px) : ey
+    root.warp(nx, ny)
+    // No crossBeyond here: leaving by a corner has no single direction to hand to
+    // the compositor, so a diagonal stops at the corner.
+    if (unbounded) root.focusLanding(true, sx)
+  }
+
   function moveStep(dir, px, unbounded) {
+    if (dir[0] !== 0 && dir[1] !== 0) { root.moveStepDiag(dir, px, unbounded); return }
     var horiz = dir[0] !== 0
     var sign = horiz ? dir[0] : dir[1]
     var from = horiz ? root.curX : root.curY
@@ -1244,11 +1279,22 @@ Item {
       // widths per second would throw the ball at an arbitrary speed.
       var n = hist.length
       // The opening press of a cluster: no second point yet, so no direction to
-      // fit. A tap that stays alone is a nudge, so this is where it happens —
-      // immediately, rather than waiting out the cluster to confirm it was alone.
-      // A sweep that follows overwrites the drawing on its next press, and the few
-      // pixels already pushed are lost in it.
-      if (n < 2) { root.mashNudgeDo(name, now); return }
+      // fit. This is where a lone press does its own thing — a direction key
+      // steers, anything else nudges — immediately, rather than waiting out the
+      // cluster to confirm it was alone. A sweep that follows keeps whatever
+      // pixels were already spent, which are lost in it.
+      if (n < 2) {
+        var dn = root.mashDirs[name]
+        if (dn) {
+          root.moveDir = root.actionDirs[dn]
+          root.collectEdges()
+          root.beginHold("move", dn, now)       // so holding it sweeps
+          root.moveStep(root.moveDir, root.fineHeld ? root.finePx : root.baseStep, false)
+        } else {
+          root.mashNudgeDo(name, now)
+        }
+        return
+      }
       var dx = hist[n - 1].x - hist[n - 2].x, dy = hist[n - 1].y - hist[n - 2].y
       var m = Math.sqrt(dx * dx + dy * dy)
       if (!(m > 0)) return
@@ -1402,6 +1448,14 @@ Item {
       if (!repeat) root.cycleStrategy()
       return
     }
+    if (name === "fine") {
+      // Held, not tapped: a press only says it went down, so the release has to be
+      // asked about, like the wheel key.
+      if (!root.fineHeld) root.fineHeld = true
+      root.pokeIdle()
+      if (!finePoll.running) finePoll.start()
+      return
+    }
     if (name === "noop") {               // a stray key in mash mode, deliberately inert
       if (!repeat) root.dbgLogEvent("\u00b7", now, false)   // logged, so a gap is explained
       return
@@ -1414,7 +1468,29 @@ Item {
       if (!wheelPoll.running) wheelPoll.start()
       return
     }
-    if (root.mashPos(name)) { if (!repeat) root.mashPress(name, now); return }
+    if (root.mashPos(name)) {
+      // A grid key that also stands for a direction is whichever the company it
+      // keeps makes it: alone it steers, in a crowd it is a point on a sweep. Only
+      // the two cases that cannot wait are handled here — everything else goes
+      // through mashPress, so the press still lands in the trail and the cluster
+      // stays honest. Returning early used to skip that, which left clusterN stale
+      // and lost the first point of any sweep that opened with a direction key.
+      var mdir = root.mashDirs[name] ? root.actionDirs[root.mashDirs[name]] : null
+      if (mdir && repeat && root.activeKind === "move") {
+        root.lastDownAt = now                   // held: sustain the sweep
+        root.confirmHold(now, root.repeatGapMs)
+        return
+      }
+      if (mdir && same && fastTap) {            // the same key twice: skitter
+        root.pokeIdle()
+        root.moveDir = mdir
+        root.collectEdges()
+        root.moveStep(mdir, root.fineHeld ? root.finePx : root.baseStep, true)
+        return
+      }
+      if (!repeat) root.mashPress(name, now)
+      return
+    }
 
     // These must not auto-fire, and several of their keys repeat.
     if (name === "cycle") { if (!repeat) { root.pokeIdle(); root.cycleKeymap() } return }
@@ -1459,7 +1535,7 @@ Item {
     } else {
       root.beginHold("move", name, now)
     }
-    root.moveStep(d, root.baseStep, fastTap)
+    root.moveStep(d, root.fineHeld ? root.finePx : root.baseStep, fastTap)
   }
 
   // A scroll key's release cannot dispatch a global shortcut — `release = true`
@@ -1545,6 +1621,7 @@ Item {
       + '.. " mash_nudge_outer=" .. tostring(m.mash_nudge_outer or "") '
       + '.. " mash_inner=" .. tostring(((m.keys or {}).mash or {}).inner or "") '
       + '.. " mash_outer=" .. tostring(((m.keys or {}).mash or {}).outer or "") '
+      + '.. " mash_dirs=" .. tostring(((m.keys or {}).mash or {}).dirs or "") '
       + '.. " mash_nudge_repeat=" .. tostring(m.mash_nudge_repeat) '
       + '.. " mash_nudge_delay_ms=" .. tostring(m.mash_nudge_delay_ms or "") '
       + '.. " mash_nudge_rate_ms=" .. tostring(m.mash_nudge_rate_ms or "")']
@@ -1585,6 +1662,16 @@ Item {
             if (kv[0] === "mash_grip") root.mashGrip = on
             else if (kv[0] === "mash_nudge") root.mashNudge = on
             else root.nudgeRepeat = on
+            continue
+          }
+          if (kv[0] === "mash_dirs") {
+            var dm = ({})
+            var dp = kv[1] === "" ? [] : kv[1].split(",")
+            for (var w = 0; w < dp.length; w++) {
+              var ab2 = dp[w].split(":")
+              if (ab2.length === 2) dm[ab2[0]] = ab2[1]
+            }
+            root.mashDirs = dm
             continue
           }
           if (kv[0] === "mash_inner" || kv[0] === "mash_outer") {
@@ -1761,6 +1848,32 @@ Item {
         root.ballHeld = (n > 0)
         if (!root.ballHeld) holdPoll.stop()      // rolling again; nothing to watch
         else if (!holdPoll.running) holdPoll.start()
+      }
+    }
+  }
+
+  Timer {
+    id: finePoll
+    interval: root.wheelPollMs
+    repeat: true
+    onTriggered: {
+      if (!root.active) { finePoll.stop(); root.fineHeld = false; return }
+      if (!fineProbe.running) fineProbe.running = true
+    }
+  }
+
+  Process {
+    id: fineProbe
+    command: ["hyprctl", "repl",
+      'local k = ((MOUSEKEYS or {}).keys or {})["mash"] or {} '
+      + 'local s = k.fine if not s then return "false" end '
+      + 'for _, n in ipairs({ s, s:lower(), s:sub(1,1):upper() .. s:sub(2):lower() }) do '
+      + 'if hl.is_key_down(n) then return "true" end end return "false"']
+    stdout: StdioCollector {
+      onStreamFinished: {
+        if (String(text).indexOf("true") >= 0) return
+        root.fineHeld = false
+        finePoll.stop()
       }
     }
   }

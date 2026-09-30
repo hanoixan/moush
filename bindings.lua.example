@@ -238,7 +238,7 @@ local function mousekeys_mash()
   -- The arrows are live in mash too, so the plugin needs their keysyms here for
   -- the same reason the other keymaps publish theirs: when two are held, repeats
   -- stop and only is_key_down can say which is still down.
-  MOUSEKEYS.keys.mash = { wheel = "W", labels = {},    -- wheel is polled; labels
+  MOUSEKEYS.keys.mash = { wheel = "7", labels = {},    -- wheel is polled; labels
                           fine = "minus", dirs = mash_dir_map(),
                           inner = mash_ring(mash_inner), outer = mash_ring(mash_outer) }
   local labels = MOUSEKEYS.keys.mash.labels             -- name the debug display's cells

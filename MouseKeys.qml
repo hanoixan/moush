@@ -617,7 +617,30 @@ Item {
     if (unbounded) root.focusLanding(true, sx)
   }
 
+  // In wheel mode the whole mode scrolls: a sweep's travel becomes detents rather
+  // than pointer movement, on whichever axis it mostly runs along.
+  function scrollTravel(dir, px) {
+    var horiz = Math.abs(dir[0]) > Math.abs(dir[1])
+    root.scrollAcc += (horiz ? dir[0] : dir[1]) * px
+    var det = (root.scrollAcc / root.mashScrollPx) | 0
+    if (det === 0) return
+    root.scrollAcc -= det * root.mashScrollPx
+    if (horiz) root.scrollX(det)
+    else root.scroll(-det)              // screen-down is wheel-down
+  }
+
+  // A discrete press is worth a detent outright: accumulating 8px against a
+  // detent's 90 would take a dozen presses to move the page once.
+  function scrollPress(dir, unbounded) {
+    var horiz = Math.abs(dir[0]) > Math.abs(dir[1])
+    var sign = horiz ? (dir[0] > 0 ? 1 : -1) : (dir[1] > 0 ? 1 : -1)
+    var n = unbounded ? root.scrollEndDetents : 1
+    if (horiz) root.scrollX(sign * n)
+    else root.scroll(-sign * n)
+  }
+
   function moveStep(dir, px, unbounded) {
+    if (root.wheelHeld) { root.scrollTravel(dir, px); return }
     if (dir[0] !== 0 && dir[1] !== 0) { root.moveStepDiag(dir, px, unbounded); return }
     var horiz = dir[0] !== 0
     var sign = horiz ? dir[0] : dir[1]
@@ -1285,6 +1308,7 @@ Item {
       // pixels were already spent, which are lost in it.
       if (n < 2) {
         var dn = root.mashDirs[name]
+        if (dn && root.wheelHeld) { root.scrollPress(root.actionDirs[dn], false); return }
         if (dn) {
           root.moveDir = root.actionDirs[dn]
           root.collectEdges()
@@ -1483,6 +1507,7 @@ Item {
       }
       if (mdir && same && fastTap) {            // the same key twice: skitter
         root.pokeIdle()
+        if (root.wheelHeld) { root.scrollPress(mdir, true); return }
         root.moveDir = mdir
         root.collectEdges()
         root.moveStep(mdir, root.fineHeld ? root.finePx : root.baseStep, true)

@@ -377,10 +377,20 @@ moves at least `baseStep`. Slow mashing lives entirely in that floor: at two
 presses a second the impulse works out to about a tenth of a pixel, which would
 round away to nothing.
 
-**Holding `w`** turns the ball into a wheel: the larger component of its velocity
-picks the axis, so a mostly-vertical mash scrolls the page and a mostly-horizontal
-one scrolls sideways. The pointer holds still while it is down. `w` has no
-dependable release either — see below — so it is polled rather than waited on.
+**Holding `7`** turns the whole mode into a wheel: the larger component of the
+motion picks the axis, so a mostly-vertical gesture scrolls the page and a
+mostly-horizontal one scrolls sideways. The pointer holds still while it is down.
+That covers all three ways of moving — a direction press is worth a detent
+outright, a double-tap runs to the end of the view, and a sweep's travel
+accumulates into detents. A discrete press is given its own detent because
+accumulating an 8px step against a detent's 90 would take a dozen presses to move
+the page once.
+
+`7` has no dependable release, so it is polled — and the poll must be told which
+key to ask about. When the wheel moved from `w` to `7` the binding moved but the
+published keysym did not, so the poll asked whether `w` was down, found it was not,
+and switched wheel mode off within 70ms of every press. The symptom was that
+holding the key appeared to do nothing at all.
 
 Two things this needed that were not obvious. The press history has to outlive the
 ball: stopping the ball used to clear it, and since a slow mash's first impulses

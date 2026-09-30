@@ -849,6 +849,13 @@ Item {
   function stepFor(mod) {
     return mod === "f" ? root.finePx : (mod === "c" ? root.coarsePx : root.baseStep)
   }
+  // A held key sweeps at the same ratio a tapped one steps at, so coarse and fine
+  // mean one thing across both: four times the base, or an eighth of it. Derived
+  // from the step sizes rather than given their own numbers, so the two cannot
+  // drift apart.
+  function speedScaleFor(mod) {
+    return root.stepFor(mod) / root.baseStep
+  }
   // One scroll axis, with a fixed sign: up and right scroll positively, down and
   // left negatively. A tie goes to the vertical, which is the axis a wheel means.
   function scrollSign(dx, dy) {
@@ -1236,6 +1243,7 @@ Item {
     root.carryGap = root.lastDownAt > 0 ? now - root.lastDownAt : -1
     root.carried = carry
     root.lastDownAt = now
+    root.holdMod = ""
     if (carry) root.startSweep(name, now, root.holdH)
     else root.beginHold("move", name, now)
     root.moveStep(d, root.stepFor(""), false)
@@ -1465,7 +1473,9 @@ Item {
       if (down) {
         root.holdH = Math.min(root.sweepMs / 1000, root.holdH + dt)
         root.pokeIdle()
-        root.moveStep(root.moveDir, root.speedFor(root.holdH) * dt, false)
+        root.moveStep(root.moveDir,
+                      root.speedFor(root.holdH) * root.speedScaleFor(root.holdMod) * dt,
+                      false)
       } else {
         root.holdConfirmed = false
         root.holdH = Math.max(0, root.holdH - dt)

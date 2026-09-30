@@ -84,8 +84,8 @@ Y U I O           the grid             W E R T
 7  hold  scroll instead of move         6  hold
 ` shows or hides the display          Tab switches layout
 
-Shift  hold  bigger: 32px a tap, and a swipe goes to the next edge
-Ctrl   hold  smaller: 1px a tap, and a much shorter roll
+Shift  hold  bigger:  32px a tap, 4x sweep speed, and a swipe goes to the next edge
+Ctrl   hold  smaller:  1px a tap, an eighth the sweep speed, and a shorter roll
 ```
 
 Everything not listed still types normally, so you can keep working with a session
@@ -103,6 +103,11 @@ its own and does nothing when tapped alone; those keys exist for mashing.
 **Two modifiers change the size of everything.** Hold **Shift** and a tap moves 32
 pixels instead of 8. Hold **Ctrl** and it moves one pixel, for when you need to be
 exact. Holding both counts as Ctrl.
+
+They scale a held key by the same ratio, so the two mean one thing whether you tap
+or sweep. Measured on a 0.4 second hold: 124px plain, 494px with Shift, 12px with
+Ctrl. Whichever modifier you were holding when you pressed is the one the sweep
+keeps, so a sweep does not change pace under you.
 
 **Holding sweeps, and picks up speed.** The longer you hold, the faster it goes. A
 hold of about a second and a half crosses the screen; measured on a 1536-pixel-wide

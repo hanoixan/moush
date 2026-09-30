@@ -360,6 +360,8 @@ Item {
       + " ultra=" + root.scrollUltra
       + " sreps=" + root.scrollReps + "/" + root.scrollDets
       + " snet=" + root.scrollSent
+      + " lastscroll=" + root.lastScrollN
+      + "@" + (root.lastScrollAt > 0 ? (Date.now() - root.lastScrollAt) + "msago" : "-")
       + " sscale=" + (root.scrollHoldName === "" ? "-"
           : root.scrollScaleAt(Date.now() - root.scrollHoldAt).toFixed(2))
       + " carryGap=" + Math.round(root.carryGap) + " carried=" + root.carried
@@ -502,8 +504,11 @@ Item {
     btnPoll.stop()
   }
 
+  property real lastScrollN: 0                // diagnostics: the last notches sent
+  property real lastScrollAt: 0
   function scroll(detents) {
     if (detents === 0) return
+    root.lastScrollN = detents; root.lastScrollAt = Date.now()
     Quickshell.execDetached(["ydotool", "mousemove", "-w", "-x", "0", "-y", String(detents)])
   }
 
@@ -979,6 +984,22 @@ Item {
   // Every grid press joins the cluster, whatever it then goes on to do. Scrolling
   // used to skip this, which left wheel mode with no gesture history at all and so
   // no way to recognise a swipe ending in a doubled key.
+  // Scrolling is a new gesture, not a continuation of whatever the pointer was
+  // doing. Without this the key that starts a scroll joins the cluster the pointer
+  // was moving in, so it is read as a swipe and scrolls along that stale direction
+  // rather than its own -- which looks like one direction working and not the other.
+  function clusterReset() {
+    root.mashTrail = []
+    root.dbgStrats = ({}); root.dbgHits = []
+    root.dbgDriveAt = 0; root.dbgDriveX = 0; root.dbgDriveY = 0
+    root.dbgOverCap = false; root.dbgDriveSpeed = 0
+    root.clusterN = 0
+    root.clusterExtent = false
+    root.scrollWant = 0; root.scrollSent = 0
+    root.mashLastAt = 0
+    root.clusterX = root.curX; root.clusterY = root.curY
+  }
+
   function mashRecord(name, now) {
     var pos = root.gridPos(name)
     if (!pos) return false
@@ -1150,7 +1171,7 @@ Item {
     if (name === "wheel") {
       // Held, not tapped: a press only says it went down, so the release has to be
       // asked about.
-      if (!root.wheelHeld) { root.wheelHeld = true; root.scrollAcc = 0 }
+      if (!root.wheelHeld) { root.wheelHeld = true; root.scrollAcc = 0; root.clusterReset() }
       root.dbgAuxPress(name, now)
       root.pokeIdle()
       if (!wheelPoll.running) wheelPoll.start()
@@ -1718,7 +1739,8 @@ Item {
     stdout: StdioCollector {
       onStreamFinished: {
         if (String(text).indexOf("true") >= 0) return
-        root.wheelHeld = false; root.scrollAcc = 0
+        root.wheelHeld = false
+        root.clusterReset(); root.scrollAcc = 0
         root.scrollHoldName = ""; root.scrollFrac = 0; root.scrollUltra = false
         scrollTimer.stop(); scrollKeyPoll.stop(); wheelPoll.stop()
       }

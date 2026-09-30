@@ -522,6 +522,7 @@ Item {
   property int btnHeld: 0                     // 1 left, 2 right, 3 middle, 0 none
   property string btnAction: ""               // which key is holding it
   property real btnAt: 0
+  property int dragPixel: 1                   // alternates, so a drag cannot drift
 
   function pressButton(button, action) {
     if (button <= 0) return
@@ -538,6 +539,10 @@ Item {
 
   function releaseButton() {
     if (root.btnHeld === 0) return
+    // The last thing the pointer felt was a nudge pixel, so put it back before
+    // letting go: where the button comes up is where the selection ends.
+    root.sentX = -1
+    root.warp(root.curX, root.curY)
     Quickshell.execDetached(["ydotool", "click",
                              "0x8" + String(root.btnHeld - 1)])
     root.log("button " + root.btnHeld + " up")
@@ -768,23 +773,24 @@ Item {
     // Sub-pixel steps accumulate in curX/curY; only tell Hyprland when the
     // rounded position actually changes, so a slow crawl is not a dispatch storm.
     if (ix === root.sentX && iy === root.sentY) return
-    var dx = ix - root.sentX, dy = iy - root.sentY
-    var known = root.sentX >= 0 && root.sentY >= 0
     root.sentX = ix
     root.sentY = iy
-    // With a button down this has to move the *device*, not the cursor. A
-    // compositor warp relocates the pointer without producing motion events, so a
-    // client sees button-down, nothing, button-up — which is why a drag selected
-    // nothing until the button came back up. Relative motion through ydotool is
-    // real input and arrives as motion, so selection follows live.
-    //
-    // It is exact only because bindings.lua pins the synthetic device to a flat
-    // acceleration profile; with acceleration on, asking for 10px moved 17.
-    if (root.btnHeld !== 0 && known) {
-      Quickshell.execDetached(["ydotool", "mousemove", "-x", String(dx), "-y", String(dy)])
-      return
-    }
     root.hypr("hl.dsp.cursor.move({ x = " + ix + ", y = " + iy + " })")
+    // The warp puts the pointer exactly where it belongs but tells no client it
+    // moved, so a drag looked like button-down, silence, button-up and selected
+    // nothing until release. One pixel of real device motion turns each step into
+    // something a client can see.
+    //
+    // Deliberately a single pixel and nothing more. The device's motion is scaled
+    // by whatever pointer acceleration and sensitivity the user has set — asking
+    // for 10px moved 17 here, and even 1px is not always 1px — so the plugin never
+    // relies on it for position. The warp above owns that, and corrects on the
+    // very next step whatever this pixel cost. The direction alternates so a slow
+    // drag cannot drift one way.
+    if (root.btnHeld !== 0) {
+      root.dragPixel = -root.dragPixel
+      Quickshell.execDetached(["ydotool", "mousemove", "-x", String(root.dragPixel), "-y", "0"])
+    }
   }
 
   // ---- crossing into another window -----------------------------------------

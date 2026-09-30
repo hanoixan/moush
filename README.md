@@ -35,28 +35,39 @@ release          btn=0
 exit while held  btn=0                          never stranded
 ```
 
-**A drag moves the device, not the cursor.** Everywhere else the pointer is placed
-by `hl.dsp.cursor.move`, which is exact and costs nothing. But a warp produces no
-motion events, so a client sees a drag as button-down, silence, button-up — the
-selection only appeared once the button came back up. With a button held, movement
-therefore goes out as relative motion through `ydotool`, which is real input and
-arrives as motion, so a selection follows live.
+**A drag needs one pixel of real motion.** The pointer is placed by
+`hl.dsp.cursor.move` everywhere, drags included: it is exact and costs nothing. But
+a warp produces no motion events, so a client saw a drag as button-down, silence,
+button-up, and the selection only appeared once the button came back up. There is
+no dispatcher that would help — `hl.dsp.cursor` offers only `move` and
+`move_to_corner`, and the `drag` that exists is `hl.dsp.window.drag`, Hyprland's
+own window move rather than a pointer drag.
 
-That needs the motion to be exact, since the plugin works out the delta itself, so
-`bindings.lua` pins the synthetic device to a flat acceleration profile:
+So while a button is held, each step is followed by a single pixel of device motion
+through `ydotool`, which is real input and reaches the client as motion. The
+direction alternates, and the next step's warp corrects whatever that pixel cost.
 
-```lua
-hl.device({ name = "ydotoold-virtual-device-1", accel_profile = "flat", sensitivity = 0 })
+**The plugin never relies on device motion for position**, because it cannot. What
+the device is asked for and what the pointer does are related by the user's own
+pointer settings, and not simply:
+
+```
+relative, default settings   asked  +10 -> +17     asked +50 -> +46
+                             even 1px is not 1px: 15 asked -> 14 moved
+absolute, flat profile       asked 200,200 -> 200,200
+absolute, default            asked 200,200 -> 400,400
+absolute, sensitivity 0.9    asked 200,200 -> 669,669
 ```
 
-Without it, asking for 10px moved 17 and asking for 50 moved 46. Only that device
-is touched; the real mouse and trackpad keep their own settings. Measured with it
-in place, the plugin's tracked position and the real cursor stay identical through
-a drag, including a 500px sweep while the button is held.
+Compensating for that would mean inverting libinput's acceleration curve, which is
+stateful — it keeps a velocity history — and has no feedback channel. Pinning the
+device to a flat profile would make it exact, but that means editing the user's
+Hyprland configuration, which a plugin has no business doing. Asking for one pixel
+and treating its result as unknown sidesteps the whole question: the warp owns the
+position, and the pixel exists only to be noticed.
 
-There is no dispatcher for this. `hl.dsp.cursor` offers only `move` and
-`move_to_corner`, and the `drag` that exists is `hl.dsp.window.drag` — Hyprland's
-own interactive window move, not a pointer drag a client would see.
+Measured across a drag, the real pointer stays within 2px of the tracked position
+and lands exactly on it at release, with no configuration changed.
 
 Like every other held key it is polled rather than waited on, and a button that
 has claimed to be down for longer than `btnMaxMs` is let up regardless — a lost

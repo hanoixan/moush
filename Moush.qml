@@ -125,10 +125,14 @@ Item {
   property var modeNames: ["mash"]
   readonly property string statePath: Quickshell.statePath("moush.json")
 
+  // The saved mode is taken on trust here, because the list of real modes does not
+  // exist yet -- it arrives with the first settings fetch. Validating against it at
+  // this point silently discarded every mode but the default. The check still
+  // happens, just later, once there is something to check against.
   function loadState(text) {
     try {
       var st = JSON.parse(text)
-      if (st && root.modeNames.indexOf(String(st.mode)) !== -1) root.mode = String(st.mode)
+      if (st && typeof st.mode === "string" && st.mode !== "") root.mode = st.mode
     } catch (e) {}
   }
 
@@ -190,7 +194,18 @@ Item {
       root.mashDirs = dm
       return
     }
-    if (k === "modes") { if (v !== "") root.modeNames = v.split(","); return }
+    if (k === "modes") {
+      if (v !== "") root.modeNames = v.split(",")
+      // A saved mode that no longer exists -- renamed or deleted in bindings.lua --
+      // would leave the session in a submap with no binds, so fall back and re-fetch.
+      if (root.modeNames.indexOf(root.mode) === -1) {
+        root.log("mode " + root.mode + " is gone; falling back to " + root.modeNames[0])
+        root.mode = root.modeNames[0]
+        root.saveState()
+        settings.running = true
+      }
+      return
+    }
     if (k === "lmb" || k === "mmb" || k === "rmb" || k === "wheel" || k === "fine"
         || k === "cycle" || k === "debug" || k === "strategy") {
       var mk = ({})

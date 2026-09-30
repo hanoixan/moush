@@ -1,1036 +1,328 @@
-# Moush — an Omarchy Quattro overlay plugin
+# Moush
 
-Drive the pointer from the keyboard: move, click and scroll without a mouse.
+Move, click, drag and scroll the mouse pointer without touching a mouse.
 
-## Entry — Super + M
+Moush is a plugin for [Omarchy](https://omarchy.org). Hold `Super + M` and your
+keyboard becomes the pointer until you let it go.
 
-How long you hold the chord decides **both** when the session starts and how
-long it lasts:
+## Why it exists
 
-| Gesture | Starts | Lasts |
-|---------|--------|-------|
-| **Short press** (chord tapped) | when the chord is **released** | until `idleMs` (2s) passes with no input |
-| **Long press** (held past `chordLongPressMs`, 500ms) | the moment 500ms elapses, **chord still down** | latched — until you hit Super + M again |
+Keyboard mouse emulation usually works one of two ways, and both are tiring. Arrow
+keys crawl a few pixels at a time, so crossing a screen takes a held key and a long
+wait. Acceleration schemes fix the crossing but overshoot everything small.
 
-Hitting the chord again always exits. While the chord is down and neither has
-happened yet, the session is *armed but inert*: keys do nothing, no marker.
+Moush gives you three ways to move, and you switch between them without thinking:
 
-## Modes — Tab cycles, and the choice persists
+- **Tap** a direction for a small, exact step.
+- **Hold** it to sweep across the screen, gathering speed as you go.
+- **Mash** across a block of keys, the way you would drag a finger across a
+  trackball, and the pointer rolls in the direction your hand travelled.
 
-There is one way to drive the pointer — **mash**, described below — and modes are
-alternative key layouts for it. Two ship — `mash` under the right hand and
-`mash-lh` under the left — and they share nothing but their shape:
+On top of that, the pointer is magnetic to the edges of your windows. A single tap
+lands on an edge it would otherwise step past, and a quick double-tap jumps
+straight to the next edge, however far away it is. Most of the places you want to
+click are at or near an edge, so getting there stops being the slow part.
 
-```
-mash                                    mash-lh
- 7 8 9 0 -                               5 4 3 2
-Y U I O            4x3 grid             W E R T
- H J K L                                 S D F G
-  N M , .                                 X C V B
+## What you need
 
-8 9 0   left/middle/right click         5 4 3
-7 (held) wheel mode                     6 (held)
-- (held) 1px steps                      2 (held)
-tab next mode   ` overlay   z next strategy       (both)
-6 T G B P ; /  inert                    7 Y H N Q A Z  inert
+Moving the pointer needs nothing extra. Clicking and scrolling need `ydotool`,
+because a Wayland application is not allowed to press mouse buttons by itself:
+
+```bash
+sudo pacman -S ydotool
+systemctl --user enable --now ydotool
 ```
 
-Everything not listed passes through, so typing still works.
+Then reboot once, or run `sudo modprobe uinput` to skip the reboot. Nothing else is
+needed on Omarchy. Do not hand-write a udev rule; the packaged one is enough.
 
-**A button follows its key: down while held, up when let go.** A tap is therefore
-a click and a hold is a drag, which is what selecting text needs. Sending a
-complete click on press could never drag — by the time the pointer moved, the
-button was already back up.
+## Install
 
-```
-tap 8            btn=0 shortly after            down then up: a click
-hold 8, move     btn=1 throughout, cur 700->732 the button stays down
-release          btn=0
-exit while held  btn=0                          never stranded
+```bash
+git clone https://github.com/hanoixan/moush ~/.config/omarchy/plugins/moush
+omarchy plugin validate ~/.config/omarchy/plugins/moush
+omarchy-shell shell rescanPlugins
+omarchy plugin enable moush
 ```
 
-**A drag needs one pixel of real motion.** The pointer is placed by
-`hl.dsp.cursor.move` everywhere, drags included: it is exact and costs nothing. But
-a warp produces no motion events, so a client saw a drag as button-down, silence,
-button-up, and the selection only appeared once the button came back up. There is
-no dispatcher that would help — `hl.dsp.cursor` offers only `move` and
-`move_to_corner`, and the `drag` that exists is `hl.dsp.window.drag`, Hyprland's
-own window move rather than a pointer drag.
+The folder must be named `moush`. Then append the contents of
+`bindings.lua.example` to `~/.config/hypr/bindings.lua` and run `hyprctl reload`.
+That file holds every key Moush uses, and it is yours to edit.
 
-So while a button is held, each step is followed by a single pixel of device motion
-through `ydotool`, which is real input and reaches the client as motion. The
-direction alternates, and the next step's warp corrects whatever that pixel cost.
+## Turning it on
 
-**The plugin never relies on device motion for position**, because it cannot. What
-the device is asked for and what the pointer does are related by the user's own
-pointer settings, and not simply:
+`Super + M` starts a session. How long you hold the chord decides how long the
+session lasts:
+
+| | starts | ends |
+|---|---|---|
+| **Tap it** | when you let go | on its own, after two seconds of no input |
+| **Hold it** for half a second | right then, before you let go | when you press `Super + M` again |
+
+Tap it for a quick correction and forget about it. Hold it when you are going to be
+driving for a while. Either way, `Super + M` always gets you out.
+
+While a session is running, a translucent red disc shows where the pointer is.
+Hyprland hides the real cursor as soon as you touch a key, so the disc is what you
+aim with.
+
+## The keys
+
+Two layouts ship. `mash` sits under the right hand, `mash-lh` under the left. `Tab`
+switches between them, and your choice is remembered between sessions and across
+a shell restart.
 
 ```
-relative, default settings   asked  +10 -> +17     asked +50 -> +46
-                             even 1px is not 1px: 15 asked -> 14 moved
-absolute, flat profile       asked 200,200 -> 200,200
-absolute, default            asked 200,200 -> 400,400
-absolute, sensitivity 0.9    asked 200,200 -> 669,669
+mash                                   mash-lh
+
+ 7 8 9 0 -                             2 3 4 5 6
+Y U I O           the grid             W E R T
+ H J K L                                S D F G
+  N M , .                                X C V B
+
+8 9 0    left, middle, right button     5 4 3
+7  hold  scroll instead of move         6  hold
+-  hold  one pixel per tap              2  hold
+` shows or hides the display          Tab switches layout
 ```
 
-Compensating for that would mean inverting libinput's acceleration curve, which is
-stateful — it keeps a velocity history — and has no feedback channel. Pinning the
-device to a flat profile would make it exact, but that means editing the user's
-Hyprland configuration, which a plugin has no business doing. Asking for one pixel
-and treating its result as unknown sidesteps the whole question: the warp owns the
-position, and the pixel exists only to be noticed.
+Everything not listed still types normally, so you can keep working with a session
+open. A few keys next to the grid are deliberately bound to nothing, so a stray
+reach does not spill letters into whatever you were writing.
 
-Measured across a drag, the real pointer stays within 2px of the tracked position
-and lands exactly on it at release, with no configuration changed.
+## Moving the pointer
 
-Like every other held key it is polled rather than waited on, and a button that
-has claimed to be down for longer than `btnMaxMs` is let up regardless — a lost
-release must not leave the pointer dragging everything it touches.
+Eight keys steer. In `mash` they are `I` up, `M` down, `J` left, `K` right, and
+`U` `O` `N` `,` for the four diagonals. The rest of the grid has no direction of
+its own and does nothing when tapped alone; those keys exist for mashing.
 
-**Shift and Ctrl are yours, not the plugin's.** Every key is bound with
-`ignore_mods`, so it reaches the plugin whatever modifiers are held — and those
-modifiers then ride along on the pointer events the plugin injects. So
-`Shift`+scroll is horizontal scrolling and `Ctrl`+scroll is zoom, in whatever app
-is underneath, and `Shift`+click extends a selection. Measured: the client sees
-`mods=33554432` (Shift) and `mods=67108864` (Ctrl) on the injected events.
+**One tap is a small step.** Eight pixels, or six on each axis for a diagonal. Hold
+`-` and a tap becomes a single pixel, for when you need to be exact.
 
-**Re-tapping a scroll key within `fast_tap_ms` (135ms)** sends
-`scrollEndDetents` (120) notches in one event, which carries an ordinary view to
-its beginning or end.
+**Holding sweeps, and picks up speed.** The longer you hold, the faster it goes. A
+hold of about a second and a half crosses the screen; measured on a 1536-pixel-wide
+screen, a 1.5 second hold travelled 1475 pixels. Let go and tap to fine-tune.
+Letting go of one direction and pressing another keeps the speed you had built up,
+so you can steer a sweep instead of restarting it.
 
-### Remapping any of it
+**A quick double-tap jumps to the next edge.** Not a step, not a sweep: the pointer
+goes straight to the nearest window edge in that direction, however far. Tap the
+same key twice with roughly a tenth of a second between the taps. Taps closer together than
+about 55 milliseconds are read as one key being held down, so a deliberate
+double-tap works better than a frantic one.
 
-Every key is configured in `bindings.lua`, not in the plugin, and the whole
-configuration lives in one table. The binds name **actions**, never keys: the
-plugin registers one global shortcut per action and each mode is a submap that
-points keys at them. Changing a key is an edit there and nothing else — no plugin
-change, no shell restart, just `hyprctl reload`.
+**Run out of edges and it crosses into the next window, and focuses it.** Walking
+left out of a window, the pointer stops on that window's left edge, then appears on
+the right edge of the window beside it, which becomes the focused window. This
+works the same whichever Hyprland layout you use.
 
-Everything a mode owns is declared under that mode, so two modes can differ in
-every key:
+## Mashing
+
+The grid is the part that is unlike other keyboard mouse tools. Instead of one key
+per direction, you run your fingers across a block of keys, and the pointer rolls
+the way your hand went. Mash `Y U I O` left to right and it rolls right. Mash
+`I K ,` downward and it rolls down. It reads the direction from the order you hit
+the keys, so no single key means anything on its own.
+
+How far it rolls depends on how far your hand travels in one go:
+
+| keys crossed in one gesture | pointer travels |
+|---|---|
+| two | about 320 px |
+| three | about 420 px |
+| four | about 535 px |
+
+Keys struck more than about a fifth of a second apart are treated as separate taps
+rather than one gesture, which is what lets tapping and mashing share the same
+keys without getting in each other's way.
+
+With the settings as shipped, the roll reaches its top speed almost immediately, so
+distance follows how far across the keys you went rather than how hard you hit
+them. If you would rather have speed matter, see `mash_gain` below.
+
+## Clicking and dragging
+
+`8` `9` `0` are the left, middle and right buttons. A button is down while its key
+is down, so a tap is a click and a hold is a drag. Hold `8`, sweep across a line of
+text, and let go, and the text is selected exactly as a mouse would have selected
+it. Clicking also focuses whatever window the pointer is over.
+
+Modifiers reach the application. Hold `Shift` and click, and the click arrives as a
+shift-click, extending a selection rather than starting a new one.
+
+## Scrolling
+
+Hold `7` and the same direction keys scroll instead of moving the pointer. The
+pointer stays where it is.
+
+Keep the key down and the scrolling accelerates: steady for the first second and a
+half, then climbing over the next five seconds to ten times the starting rate,
+where it stays. Measured while holding one key:
+
+```
+after 0.8s   1.0x      still steady
+       2.0s   2.9x     climbing
+       3.5s   6.0x
+       5.5s  10.0x     at the top
+       7.5s  10.0x
+```
+
+For a long document, double-tap a vertical key and keep it down on the second tap.
+Scrolling starts at a hundred times the base rate immediately and stays there until
+you let go. As with the jump-to-edge double-tap, a deliberate pace works; taps
+much faster than a tenth of a second do not register as a double-tap.
+
+## The display
+
+Backtick shows or hides a panel in the top left. It is there to make the layout
+legible while you are learning it, or after you have rearranged the keys.
+
+The top row shows every key the layout binds that is not part of the grid, each
+under the name of its job, and a key turns red while it is held. The grid below
+shows your keys where they sit under your hand, lighting up as you strike them and
+shading brighter green with how recent each strike was, so you can see the shape of
+the gesture you just made. An arrow shows the direction the roll was read as, and a
+log along the bottom lists recent keys with the gap between them.
+
+Press `Tab` and the whole panel redraws for the other layout.
+
+## Making it yours
+
+Everything lives in `~/.config/hypr/bindings.lua`, in one table. Edit it and run
+`hyprctl reload`; there is nothing to restart and no other file to touch.
+
+Each layout declares its own keys, so the two can share nothing at all:
 
 ```lua
 MOUSH = {
-  fast_tap_ms = 135,   -- re-press the same key quicker than this to double-tap
-  carry_ms    = 175,   -- press a direction this soon after another to keep its speed
+  fast_tap_ms = 135,   -- re-tap a key quicker than this to jump to an edge
+  carry_ms    = 175,   -- press a new direction this soon and keep your speed
 
   modes = {
     mash = {
-      -- the grid: key, x, y. Any coordinate space you like.
-      keys = { { "Y", 0.00, 1 }, { "U", 1.00, 1 }, { "I", 2.00, 1 },
-               { "O", 3.00, 1 }, { "P", 4.00, 1 }, { "bracketleft", 5.00, 1 },
-               { "H", 0.25, 2 }, { "J", 1.25, 2 }, { "K", 2.25, 2 },
-               ... },
-      -- which of them also steer when struck alone
-      dirs = { I = "up", M = "down", J = "left", K = "right",
-               U = "upleft", O = "upright", N = "downleft", comma = "downright" },
+      keys = {
+        -- key, then where it sits: x to the right, y downward
+        { "Y", 0.0, 1 }, { "U", 1.0, 1 }, { "I", 2.0, 1 }, { "O", 3.0, 1 },
+        { "H", 0.5, 2 }, { "J", 1.5, 2 }, { "K", 2.5, 2 }, { "L", 3.5, 2 },
+        { "N", 1.0, 3 }, { "M", 2.0, 3 }, { "comma", 3.0, 3 }, { "period", 4.0, 3 },
+      },
+
+      -- which of those also steer when tapped on their own
+      dirs = {
+        I = "up", M = "down", J = "left", K = "right",
+        U = "upleft", O = "upright", N = "downleft", comma = "downright",
+      },
+
       buttons = { lmb = "8", mmb = "9", rmb = "0" },
-      wheel = "7", fine = "minus", cycle = "TAB", debug = "grave", strategy = "Z",
-      inert = { "5", "6", "R", "T", "F", "G", "V", "B", "A", "S", "D", "W" },
+      wheel   = "7",        -- hold to scroll
+      fine    = "minus",    -- hold for one-pixel taps
+      cycle   = "TAB",      -- next layout
+      debug   = "grave",    -- show or hide the display
+
+      -- bound so they do nothing, rather than typing into your window
+      inert = { "6", "T", "G", "B", "P", "semicolon", "slash" },
     },
+
     ["mash-lh"] = { ... },
   },
 }
 ```
 
-**Coordinates are yours to choose.** The plugin reads the grid as plain numbers and
-only requires that **x increases to the right and y increases downward** — the
-directions a screen already uses, so a mash that goes down-right on the keyboard
-goes down-right on screen. Nothing else is assumed: the origin can sit anywhere,
-the spacing can be whatever matches your keyboard, and units are yours. Speed is
-in *your* units per second and the impulse is cubic in it, so a grid measured in
-tenths rather than key widths wants `mash_gain` scaled to match. Every derived
-quantity — the overlay's extent, the vector lengths, the fitted speed itself —
-is computed from the coordinates actually given.
+### The grid
 
-The defaults are in key widths, with each row offset half a key from the one
-above, which is roughly how a staggered keyboard actually sits:
+The numbers after each key say where it sits. The only rule is that x grows to the
+right and y grows downward, matching the screen. Beyond that the units are yours:
+the shipped layout counts in key widths, with each row set half a key right of the
+one above, which is roughly how a staggered keyboard feels under the hand. An
+ortholinear keyboard would use whole numbers with no offset. Larger or smaller
+numbers work too, as long as you are consistent.
 
+Only keys in `dirs` steer on their own. Leave a key out of `dirs` and it is purely
+part of the grid.
+
+### Leaving things out
+
+Any of these can be omitted. A layout with no `wheel` cannot scroll. A layout with
+no `dirs` is a pure trackball. A layout with only `lmb` has only a left button.
+Nothing else is affected.
+
+### Adding a layout
+
+Add another entry under `modes`. `Tab` cycles through them in alphabetical order.
+
+### How mashing feels
+
+```lua
+mash_gain    = 20,     -- how hard each key press shoves the pointer
+mash_vmax    = 1000,   -- its top speed, which sets the longest roll
+mash_samples = 4,      -- how many recent presses the direction is read from
 ```
-Y U I O         +0.0 keys
- H J K L        +0.5
-  N M , .       +1.0
+
+`mash_gain` is the one to reach for. It sets how much speed a press adds, and it
+grows steeply, so a change is felt far more at the fast end than the slow end. At
+the shipped value of 20 almost any real mash hits the `mash_vmax` ceiling, which is
+why distance follows how far your hand travelled rather than how fast it moved.
+Lower it and speed starts to matter: at `0.01`, the same four presses travelled
+16 px when mashed slowly and 43 px when mashed quickly.
+
+`mash_vmax` sets the longest possible roll. Raise it for bigger screens.
+
+### How scrolling feels
+
+```lua
+scroll_repeat_scale_min   = 1,    -- wheel notches per repeat to begin with
+scroll_repeat_scale_max   = 10,   -- and once it has finished speeding up
+scroll_repeat_scale_ultra = 100,  -- the double-tap-and-hold rate
+scroll_increase_delay     = 1.5,  -- seconds steady before it starts climbing
+scroll_increase_time      = 5,    -- seconds it takes to climb
+scroll_repeat_ms          = 60,   -- how often it repeats
 ```
 
-Halving keeps a column step and a row step the same distance, so the grid
-measures the way it feels under the hand rather than the way it is easiest to type
-out. Re-measuring for a differently staggered keyboard — or an ortholinear one,
-where every offset is 0 — is an edit to `keys` and nothing else.
+The two `increase` values are in seconds; everything ending in `_ms` is in
+milliseconds.
 
-**The plugin never sees a keysym for the grid.** Each entry is bound to
-`moush:k<index>`, and the plugin reads coordinates out of the settings string
-by index. Keysyms appear only where the plugin has to *ask* whether a key is still
-down — the wheel, fine, the buttons, a sustained sweep — and those are published
-to it as settings for exactly that purpose, because `is_key_down` wants exact X
-spellings (`i` where the bind says `I`) and answers nil for anything else.
+### Timings
 
-**Any key may be omitted.** A mode with no `wheel` has no wheel mode; a mode with
-no `dirs` is a pure trackball; a mode with only `lmb` has only a left button.
-`inert` is the one list that exists to do nothing: those keys are bound and
-swallowed so a stray strike in the middle of a mash does not type into the window
-underneath.
+`fast_tap_ms` is the window for a double-tap. It must stay below your keyboard
+repeat delay, which on Omarchy is 250 ms, or the first auto-repeat of a held key
+would look like a deliberate second tap. Taps closer together than about 55 ms are
+read as a key being held rather than tapped twice.
 
-That needs one guard, and its absence failed in a way worth knowing about. A nil
-key reaching `hl.bind` throws on the string concatenation, and the throw aborts the
-**whole submap callback** — so leaving out `mmb` did not cost a middle button, it
-silently cost every bind declared after it, including `Tab`. The mode loaded, moved
-the cursor, clicked, and simply could not be left. Nothing was logged. So
-`moush_bind` returns early on a nil or empty key, and `MOUSH_SETTINGS`
-publishes an empty string rather than the word `nil` for one, which the plugin's
-key-down check already reads as "no such key".
+`carry_ms` is how long you have, after releasing one direction, to press another
+and keep the speed you had built up.
 
-**Global tunables can be overridden per mode.** Anything at the top level of
-`MOUSH` — the timings, `mash_gain`, the scroll ramp — may be restated inside a
-mode, and `MOUSH_SETTINGS(mode)` merges the two before handing the result over.
-So a left-hand mode can have its own gain without duplicating everything else.
+### The entry chord
 
-Timings live in `bindings.lua` too, so the keys and the behaviour that depends on
-them stay in one file. Hyprland keeps its Lua globals across config loads, so the
-plugin reads this table back over `hyprctl repl` when a session starts.
-
-`fast_tap_ms` must stay under `input:repeat_delay` (250ms), or a held key's first
-auto-repeat would read as a deliberate re-press. The two are independent and start
-out equal only by coincidence.
-
-**Adding a mode** is one more entry in `modes`. The plugin dispatches
-`hl.dsp.submap("moush-<name>")`, and the loop at the bottom of the block
-defines a submap per entry, so a name always has a submap behind it. **Tab cycles
-them in alphabetical order** — Lua's `pairs` has no defined order, so the names are
-sorted before being published rather than left to chance; `mash` coming first is
-alphabetical, not special-cased.
-
-The entry chord is an ordinary bind at the top of the block, so `SUPER + M` is
-changed the same way — with one extra step. The plugin has to poll whether the
-chord is still held (it is how a short press is told from a long one, see
-[How input actually gets here](#how-input-actually-gets-here-and-why)), so it
-needs the chord's **keysyms** as well as the bind. Those live in `shell.json`,
-which is where Omarchy keeps plugin settings:
+`Super + M` is set by an ordinary binding at the top of the block. Moush also needs
+to know which keys that chord uses, which lives in `~/.config/omarchy/shell.json`:
 
 ```json
-{ "id": "moush", "chordKey": ["b"], "chordMods": ["Super_L", "Super_R"] }
+{ "id": "moush", "chordKey": ["m", "M"], "chordMods": ["Super_L", "Super_R"] }
 ```
 
-Either list may hold several syms and any one counts — that is how `Super_L` and
-`Super_R`, and the shifted `M`, are both covered by the defaults (`["m", "M"]` and
-`["Super_L", "Super_R"]`). Set `chordMods` to `[]` for a bare key. Get these wrong
-and the bind still works, but every press latches: the poll never sees the chord
-go up.
+Moush uses these to tell a tap from a hold, so keep them in step with the
+binding if you change it.
 
-`Tab` cycles through the modes. The active one is written to
-`$XDG_STATE_HOME/quickshell/by-shell/<id>/moush.json` and restored on load;
-its name flashes under the cursor on entry and after each Tab.
+One thing to know if you move it. Twelve of Omarchy's forty-three `Super`
+bindings do not report a key name, so a combination can look free when it is
+already taken; check with `omarchy menu keybindings --print` rather than by eye.
+And the chord key must not be one of the keys your layout uses in a session, or it
+will click or move while you are trying to exit.
 
-The pointer's position is drawn as a **translucent red disk** (`markerSize`,
-28px) — Hyprland hides the real cursor on key press
-(`cursor:hide_on_key_press`), so without a marker there is nothing to aim with.
+## If something is not working
 
-### mash — a trackball made of keys
+Clicking and scrolling do nothing, but the pointer moves: `ydotool` is not running.
+Check with `systemctl --user status ydotool`.
 
-Instead of a key per direction, the keys form a grid under your hand, and mashing
-across them rolls the pointer the way dragging a finger rolls a trackball. How fast
-you mash decides how far it goes.
+Keys do nothing at all after editing a layout: run `hyprctl reload`, then check
+that the layout name in `modes` has no typo, since `Tab` moves between layouts by
+name.
 
-**Eight of the grid keys double as directions.** Struck alone, a key steers with
-the arrow keys' own model behind it — `baseStep`, acceleration while held, edge
-snapping, and a double-tap that skitters to the next edge. Struck as part of a
-sweep it is a point in space again.
-
-```
-  U  I  O      up-left    up     up-right
-  J  .  K      left              right
-  N  M  ,      down-left  down   down-right
-```
-
-```
-lone I                        (  +0,  -8)   a step, snapping to an edge
-lone U                        (  -6,  -6)   diagonal, normalised
-I then U                      (-299,  -8)   two keys: it was a sweep
-I I fast                      (  +0,-462)   double-tap: skitter
-hold I for 0.9s               (  +0,-500)   accelerating sweep
-```
-
-**Tapping one of them repeatedly steps every time, at any speed.** A press that
-lands on the same key as the last adds no displacement, so there is nothing for a
-fit to work with, and it is treated as standing alone rather than as a sample of a
-gesture.
-
-```
-gap between presses   300ms  220ms  180ms  150ms | 140ms   60ms
-moved per press         8px    8px    8px    8px |  204px  206px
-                        the step                 | the double-tap skitter
-```
-
-Without that, tapping between `fast_tap_ms` and `mash_cluster_ms` fell in a gap:
-the presses shared a cluster without being a double-tap, so the second onward were
-read as samples of a point already sampled. A fit over no displacement produced
-nothing, and the cursor sat still until the tapping slowed down or sped up — 8px
-per press at 220ms, 1.3px at 150ms, then 206px at 120ms.
-
-They cannot be separately bound as direction keys — Hyprland fires one dispatcher
-per key, and these are already grid keys — so the plugin decides per press. Only
-two cases are settled before the mash machinery sees the press: a repeat, which
-sustains a sweep, and the same key struck twice quickly, which skitters. Everything
-else goes through as a normal press, so the cluster stays honest and a sweep that
-opens with a direction key keeps its first point.
-
-**Diagonals snap on both axes.** A press lands on the nearest edge to the left
-*and* the nearest above; a double-tap runs both to their limits, which is the
-corner. The cardinal path cannot express that — it picks one axis and ignores the
-other — so diagonals take their own route through `moveStep`. They do not cross
-off-screen: leaving by a corner has no single direction to hand the compositor.
-
-**Held, `-` makes every step one pixel** instead of `baseStep`, for placing the
-cursor exactly. It applies to the discrete step, not to the speed of a sweep. Like
-the wheel key it is polled rather than waited on, since a release is not reliably
-delivered.
-
-**The fit sees the last `mash_samples` (4) presses.** Older ones drop out, so a
-long mash steers by what your hand is doing now rather than by an average over the
-whole gesture.
-
-```
-presses in cluster   2   3   4   6   8
-window               2   3   4   4   4
-```
-
-**The overlay shows exactly those presses and no more.** A key that has aged out
-of the window goes back to looking untouched, and the green timing shade
-renormalises over what remains, so the grid always depicts what the fit is
-actually working from rather than the whole gesture. Mashing `Y U I O P [ H J`
-with `mash_samples = 5` leaves `O P [ H J` lit and `Y U I` dark; at 3 only
-`[ H J` remain.
-
-**Presses are grouped into clusters, and a fit never spans two.** A gap longer
-than `mashClusterMs` (200ms) ends the gesture, and the next press starts a fresh
-cluster with nothing carried over. Without that, two sweeps either side of a pause
-were fitted together and produced a direction belonging to neither. The cluster
-bounds what a fit may see; the `mash_samples` window above bounds it further.
-
-```
-presses 52ms apart   -> cluster = 4     one gesture
-presses 140ms apart  -> cluster = 1     each press starts its own
-```
-
-**A cluster becomes a direction by least squares.** `lsq` fits position against
-time over the window and takes the slope: that slope *is* the velocity, in grid
-units per second, and the fit is the steadiest of the several strategies this went
-through — one stray key barely moves it. It steers from the **second** press of a
-cluster; until then a press moves the cursor by the `mashStepPx` floor and nothing
-more.
-
-```lua
-MOUSH = {
-  mash_strategy = "lsq",             -- steers the pointer
-  mash_gain = 20,                    -- how hard each press shoves it
-  mash_vmax = 1000,                  -- ceiling, and so the longest throw
-  mash_samples = 4,                  -- presses a fit may see
-  mash_debug_strategies = "lsq",     -- also drawn, for comparison
-}
-```
-
-`mash_gain` is the one dial worth reaching for when mash feels too eager or too
-sluggish: the impulse is `mash_gain * speed^3`, so a press carries
-`mash_gain * speed^3 / 3` pixels once friction has run out. Being cubic, a change
-here is felt hardest at the fast end — halving it barely alters a slow nudge but
-takes a long way off a burst.
-
-Four other strategies once lived here — a three-press principal-axis fit, a
-net-displacement fit, PCA, and an EWMA of per-hop velocities — and on the same
-four-press run they landed within about 12% of each other, so the choice never
-mattered as much as it looked like it might. They are gone, but the seam they
-were fitted into is not: `mash_strategy` still names the one in use,
-`mash_debug_strategies` still says which are drawn, the overlay still colours and
-dashes each by name, and `z` still cycles. Adding one back is a function and a
-name in a list.
-
-**The ball.** Each press adds an impulse along the drive direction and friction
-bleeds it away: `v += u·mash_gain·speed³`, then `v *= e^(-friction·dt)`, capped at
-`mashVMax`. Total distance from one impulse is `v/friction`, so friction sets how
-long a throw lasts without changing how far it goes — the gain decides that.
-
-Direction passes through unscaled. Both grid axes are in key widths, so a 45° mash
-gives 45° on screen with no aspect correction: crossing the wider screen dimension
-takes correspondingly more mashing.
-
-Measured on four-press runs, the impulse tracks the cube of the mash rate and runs
-a little steeper still, because faster presses also decay less between each other:
-
-```
-gap    speed      predicted s^3   measured ball
- 60ms  16.7 kw/s         27.0x           40.7x
- 90ms  11.1 kw/s          8.0x           11.6x
-130ms   7.7 kw/s          2.7x            3.1x
-180ms   5.6 kw/s          1.0x            1.0x
-``` The exponent is
-steep because the two ends of the scale are far apart: a press at two per second
-should nudge a single pixel, a four-press burst should cross the screen.
-
-```
-slow, ~2 presses/sec   +1px per press          (the mashStepPx floor)
-fast, 4 presses/180ms  0 -> 1535px, clamped    (~one screen width)
-vertical mash 7 Y H N  y 100 -> 863            (down, as struck)
-5 R F V                no movement at all      (inert)
-```
-
-Every press moves at least `mashStepPx` (1px), the way every press elsewhere
-moves at least `baseStep`. Slow mashing lives entirely in that floor: at two
-presses a second the impulse works out to about a tenth of a pixel, which would
-round away to nothing.
-
-**Holding `7`** turns the whole mode into a wheel: the larger component of the
-motion picks the axis, so a mostly-vertical gesture scrolls the page and a
-mostly-horizontal one scrolls sideways. The pointer holds still while it is down.
-That covers all three ways of moving — a direction press is worth a detent
-outright, a double-tap runs to the end of the view, and a sweep's travel
-accumulates into detents. A discrete press is given its own detent because
-accumulating an 8px step against a detent's 90 would take a dozen presses to move
-the page once.
-
-**Held, a direction key repeats, and the repeats grow.** Flat at
-`scroll_repeat_scale_min` for `scroll_increase_delay`, then ramping to
-`scroll_repeat_scale_max` over `scroll_increase_time`, then flat again — so the
-same key serves a line and a page.
-
-```lua
-scroll_repeat_scale_min = 1,     -- detents per repeat to begin with
-scroll_repeat_scale_max = 10,    -- and once the ramp has run out
-scroll_increase_delay   = 1.5,   -- seconds flat before it starts
-scroll_increase_time    = 5,     -- seconds the ramp takes
-scroll_repeat_ms        = 60,    -- between repeats
-```
-
-The two ramp timings are in **seconds**, unlike the `_ms` settings elsewhere.
-
-**Struck twice and kept down, a vertical key skips the ramp** and starts at
-`scroll_repeat_scale_ultra` (100) at once, holding there until released — for
-crossing a long document in one gesture. Only `I` and `M`: a document is long, not
-wide, so the sideways keys keep their end-of-view double-tap instead.
-
-```
-single press + hold I    scale 1.00 -> 5.72     the ordinary ramp
-double-tap + hold I      100.00 immediately     ~1800 detents/sec
-double-tap + hold K      scale 1.00 -> 5.52     sideways: no ultra
-```
-
-```
-   t     +reps  +detents  det/rep  scale
- 1.2s      15        15     1.0     1.00   flat through the delay
- 2.3s      19        27     1.4     2.42   ramping
- 3.5s      20        69     3.5     4.52
- 5.9s      19       151     7.9     8.95
- 7.1s      19       185     9.7    10.00   capped
- 9.3s      18       180    10.0    10.00
-```
-
-The repeats are the plugin's own, not the compositor's. Hyprland stops repeating a
-key once a second bound key is held, and in wheel mode `7` always is — so a
-key-repeat ramp produced exactly one detent and then nothing, while the scale went
-on climbing against a clock. The release is polled for the same reason.
-
-Fractional scales are carried rather than dropped, so a scale under 1 still
-scrolls eventually and the ramp climbs smoothly instead of in visible steps.
-
-`7` has no dependable release, so it is polled — and the poll must be told which
-key to ask about. When the wheel moved from `w` to `7` the binding moved but the
-published keysym did not, so the poll asked whether `w` was down, found it was not,
-and switched wheel mode off within 70ms of every press. The symptom was that
-holding the key appeared to do nothing at all.
-
-Two things this needed that were not obvious. The press history has to outlive the
-ball: stopping the ball used to clear it, and since a slow mash's first impulses
-stop the ball almost immediately, that erased the very presses a fit needs, so no
-direction could ever be computed. And the two-press fallback, used before a fit
-exists, yields a *direction* only — its length is a distance in key widths, and
-feeding that to a formula expecting key widths per second throws the ball at an
-arbitrary speed.
-
-#### Seeing what mash is thinking
-
-While a session is open, a debug display sits in the upper left. It is on
-by default and **backtick** toggles it. **`z` switches which strategy steers**,
-cycling through the ones being drawn so the new one is always on screen to compare
-against, and the legend highlights it. That is a live experiment rather than a
-setting: the next session takes its strategy from `mash_strategy` again.
-
-```
-lmb mmb rmb wheel fine cycle debug strat   every key this mode binds that is
- 8   9   0    7    -   tab    `     z      not part of the grid; red = down
-
- Y  U  I  O                              the grid as it sits under your hand;
-  H  J  K  L                             struck: black on a green shaded by when
-   N  M  ,  .                            in the cluster it was struck;
-                                         untouched: white on dark grey
-        \|/                              vectors, drawn from the grid centre
-         *                               because they are directions, not places
-
-- lsq                                    legend, in the colours below
-```
-
-**The row along the top is everything else the mode binds** — the buttons, the
-wheel and fine modifiers, cycle, the overlay toggle, the strategy key — each under
-the name of the job it does, because which key does what is the whole question a
-remapped mode raises. A key omitted from the mode is omitted from the row, so the
-row depicts the mode in hand rather than a canonical keyboard.
-
-**Red means the key is down.** For the three buttons and the two modifiers that is
-their real held state, not a flash, so a drag or a wheel-hold stays lit for exactly
-as long as the finger does — which is the quickest way to see a button that never
-got its release. The momentary keys have no held state to report and flash for
-`dbgAuxFlashMs` (260ms) instead.
-
-Keeping that honest costs one thing: the overlay normally stops repainting 300ms
-after the last event, and a held key outlasts that, so the repaint timer also stays
-alive while anything is down and takes one more pass after the release to clear the
-red. Without it the red would simply persist, frozen in whichever frame happened to
-be the last one painted.
-
-A key is **white on dark grey until it is struck, then black on its colour** —
-green in the grid, red in the aux row. That rule is what sets the cold end of the
-timing ramp: it used to be a near-black grey, which black text cannot be read on,
-and which also made a cluster's first press hard to tell from a key nobody had
-touched. The ramp now runs from a deep green to a bright one, both light enough to
-carry black text, and a luminance check picks the ink so retuning a colour cannot
-silently produce an unreadable key.
-
-**Tab rebuilds the whole panel.** Both the grid and the aux row are the current
-mode's, so cycling redraws from the new mode's settings once they arrive — which is
-also why the cluster is dropped at the same moment. The overlay is keyed on grid
-*indices*, and every index now means a different key, so carrying the presses over
-would shade the new grid by the old mode's gesture. The event log is the deliberate
-exception: it is a history, and the gap shows up in it as a large delta.
-
-Green is the drive vector actually steering the pointer. Every vector radiates
-from the grid's centre, because a vector here is a direction rather than a place.
-
-**Keys are shaded by their timing within the cluster**, from dark grey at the
-start of the gesture to bright green at the most recent press, by
-`(t - t_first) / (t_latest - t_first)`. The rhythm then reads straight off the
-grid: an even sweep shades evenly, and a burst that stalled leaves a visible cliff
-between two neighbouring keys.
-
-```
-struck  Y     U     I     O     P
-dt ms   -     19    19    111   142
-normal  0.00  0.07  0.13  0.51  1.00
-        dark  .............green....  three quick, then two laboured
-```
-
-**The whole grid re-shades on every press**, because the span it normalises
-against grows with the cluster. The newest key is always at full green and the
-rest slide back toward grey behind it, so the picture is live from the first press
-rather than only resolving once the gesture is over.
-
-A key struck twice shades by its later strike. A cluster of one has no span to
-divide by, and its only key is also its most recent, so it reads as fully green.
-
-**The graphic holds one cluster and does not fade.** It shows the most recent
-cluster and keeps showing it, so a gesture can be studied after it has finished
-rather than disappearing while you look at it; the next cluster clears the panel
-and draws itself instead. The log below is the exception — it spans clusters, and
-the gap that ended one shows up there as a large delta. 
-
-**Every strategy in `mash_debug_strategies` is drawn too**, whether or not it is
-the one steering, so they can be read against each other live. A colour key along
-the bottom of the panel says which is which, greying out any that has produced
-nothing to draw.
-
-Colour and dash come from a strategy's place in the canonical list rather than
-from a hash of its name. Hashing gave no guarantee that two would not land on
-near-identical hues, which is the one thing this must not do; an index gives each
-an evenly spaced slot, with a name-derived jitter *inside* its own slot so the
-palette does not read as a plain rainbow while no two slots can ever touch. A
-strategy keeps its colour whichever subset is drawn. With one strategy left the
-machinery is idle, and it is kept for the same reason `z` is.
-
-Labels on the vectors themselves were tried first and removed: they collided
-precisely when the strategies agreed, which is when telling them apart matters
-most. Staggering them along the ray and across it helped but never fully fixed it,
-and the key along the bottom does the job without cluttering the vectors.
-
-The red is the reason this is worth having. A reversal — `L K L`, say — fits to
-an axis with *exactly no motion along it*, so it steers nothing. Without the
-display that is invisible: the ball simply does not respond and there is nothing
-to look at. It also caught a real bug. Such a fit comes back as `1e-15` rather
-than `0`, which passed a bare `v > 0` and was recorded as a valid contribution
-that happened to move nothing — visible in the display as a vector that was
-never drawn, because its length was zero. Hence `mashMinSpeed`: a fit has to
-carry real speed to count, and anything below it is drawn red and ignored.
-
-**An event log runs along the bottom**, newest first, up to 20 entries: which key
-was struck and how many milliseconds since the one below it. Unlike everything
-else on the panel it does not fade — entries stay until pushed out — because its
-job is to be read after the fact.
-
-```
-key  dt ms  imp px/s
-P    146    529        laboured, so barely a shove
-O    105    1800
-I     20    37500      mashed hard: far past the 8000 px/s cap
-U     20    37500
-Y     -     -          first press: nothing to measure, nothing to fit
-```
-
-The third column is the impulse that press applied, `mash_gain * speed³`. Reading
-it against the `dt` beside it is the quickest way to see why a burst threw the
-cursor as far as it did — and to spot the cubic saturating: past about 25
-key-widths/second a single press already exceeds `mashVMax`, so mashing harder
-stops adding anything. A dash means the press drove nothing, either because the
-strategy had too few events yet or because its fit came back degenerate.
-
-A stray null key is logged too, so a gap in the deltas is explained rather than
-mysterious:
-
-```
-·    201     inert, but it happened
-```
-
-Strays are logged in orange rather than skipped. A null key does nothing to the
-model, so without a row of its own it would show up only as an unexplained gap
-between two deltas.
-
-The panel's backdrop is fully opaque. At 96% the bright text underneath still read
-through clearly enough to fight with the log, and a debug overlay is worth more
-legible than see-through.
-
-The key names come from `bindings.lua`, which publishes the grid's labels next to
-the keys themselves, so a re-measured grid labels itself correctly with no change
-here.
-
-### Speed model — hold duration sets speed
-
-Both movement and scrolling run off one model. `h` is how long the current
-contiguous hold has run; speed is proportional to it:
-
-```
-v = k · h        k = 2W/T²        T = sweepMs (1.5s),  W = screen width
-```
-
-`k = 2W/T²` is chosen so that **integrating a hold of T seconds gives exactly one
-screen width**, and a hold of `t` seconds reaches `t/T` of top speed — so a 0.25s
-hold reaches 1/6 the speed of a 1.5s one. `h` grows while a direction key is down
-and recedes when none is, so releasing and re-pressing resumes part-way up the
-ramp instead of from rest. That is what lets **tap frequency modulate speed**:
-sweep by holding, fine-tune by tapping. Any single press moves at least
-`baseStep` (8px), and any scroll press emits at least 1 detent, regardless of
-`h`. 8px is therefore the finest positioning step — drop `baseStep` to 1 if you
-want pixel-exact placement back.
-
-**A new direction pressed mid-sweep takes over without the motion stopping**, and
-carries the accumulated `h` with it — you can steer a sweep rather than having to
-restart it. This needs an explicit bridge: the key that will sustain the sweep
-does not repeat for 250ms, so without one the motion would lapse after
-`repeatGapMs` and the speed would bleed away while waiting.
-
-**The handover survives letting go**, for `carry_ms` (175ms). Requiring the old key
-to still be down meant releasing it a moment early threw the speed away: the new
-key took one `baseStep` and then nothing moved until its first auto-repeat landed
-250ms later. The window is measured from the last key *event* proving a direction
-was down — a press or a repeat — rather than from the motion tick, which runs
-`repeatGapMs` past the final repeat and would stretch the window by that much.
-What carries over is the speed as it stands at the new press, not as it was at
-release, since `h` decays across the gap.
-
-```
-hold Right 1.0s (h≈0.93, ~1275px/s), release, wait, then one press of Down:
-  gap seen by the plugin     8   50   86  122  148 | 176  219 ms
-  carried                  yes  yes  yes  yes  yes |  no   no
-  travel from that press       107..462px          |    8px
-```
-
-The gap is the one the plugin measured, not the one asked for: harness timing could
-not set it reliably, so `probe()` reports what each press actually saw. Travel
-varies across the carried cases because the cursor clamps at a screen edge part way
-through some of them; the decision is the thing being measured.
-
-Both modes wait out the acceleration ramp identically; Shift changes *where the
-cursor lands*, not how fast it gets going.
-
-```
-takeover, both keys held     255px     in 180ms, speed carried over
-takeover, old key released   349px     in 180ms, ~1939px/s
-```
-
-### Edge snapping
-
-Movement is magnetic to window edges. Every press looks for the nearest edge
-ahead of the cursor in that direction:
-
-| | search range | effect |
-|---|---|---|
-| **single press** | within the distance this press would travel | lands on an edge it would otherwise step over; otherwise moves the full distance |
-| **double-tap** — same key re-pressed within `fast_tap_ms` (135ms) | unbounded | skitters to the next edge however far away |
-
-An edge is stored as **the last pixel inside its window**, not the exclusive
-bound. A window at `x=12 w=734` covers `12..745`, so its right edge is `745`; the
-snap target is never `746`. This matters because `746` is *outside* the window —
-resting there puts the pointer over whatever is behind, so a double-tap down
-inside a floating window came to rest one row below it and focus fell through to
-the window underneath. Keeping edges inside their own window means a landing is
-always over the window whose edge it is, which is what lets focus follow with no
-special cases. Doing it at collection time is also why the search needs no
-adjustment: the stored coordinate is already the reachable one, so "strictly
-ahead" keeps making progress by itself.
-
-Only edges **on screen** are candidates. Windows routinely extend past the
-display, and an edge you cannot reach is not a snap target: `warp()` clamps it
-back, so the press appears to do nothing — and worse, it hides the fact that the
-skitter has run out of edges.
-
-#### Crossing into another window
-
-A run of double-taps walks edge to edge across a window, crosses into the next,
-and carries on. Two things happen along the way, and both **focus a window by
-address** — never by direction.
-
-- **Landing inside an unfocused window** adopts it. The pointer is already
-  inside, and Hyprland only warps when focusing a window the pointer is *outside*
-  of, so this costs no cursor movement at all.
-
-  Which window that is comes from **the cursor's own position first**, because
-  what gets focused has to be what the pointer is visually over — that is where a
-  click will land.
-
-  Only when the cursor sits over *nothing* does the direction of travel decide,
-  probed one pixel along it. Since edges are last-pixel-inside coordinates, that
-  now only happens in genuinely empty space — the strip above every window, or a
-  gap the screen bound falls in — so it is a fallback rather than the main path.
-
-  Probing the nudge *first* is wrong, and was: a short floating window's top edge
-  is already inside it, so nudging upwards escaped to the tiled window behind and
-  focused something the pointer was not over.
-
-  Focus has to be set explicitly; moving the pointer is not enough. Omarchy runs
-  `input:follow_mouse = 1`, but that acts on real pointer motion, not on a
-  dispatcher warp: a cursor parked deep inside another window by
-  `hl.dsp.cursor.move` leaves focus where it was. Measured both ways.
-
-  When windows overlap, the one on top wins: floating above tiled, and among
-  equals the more recently focused (`focusHistoryID`). Hyprland's client list is
-  not in z-order — a window focused three ago was listed ahead of the one focused
-  last — so it cannot be used to break the tie.
-- **Landing on the screen's own edge** looks for a window with content past that
-  boundary — exactly the windows that are not snap targets because they are
-  unreachable — and focuses the nearest one.
-
-`hl.dsp.focus({ direction = … })` is deliberately **not** used, and that is the
-whole point of this section. It asks the *layout* what comes next, which on a
-single monitor is just another tiled window, and Hyprland then drags the pointer
-into it (`cursor:no_warps = false`) — the cursor arrives somewhere you never
-aimed at. Naming the window instead keeps focus and pointer in agreement.
-
-**Why this is the same in every layout.** Addressing a window says nothing about
-layout order, so the rule needs no per-layout cases — and each layout then does
-its own native thing with the focus:
-
-| layout | window past the screen edge? | what focusing it does |
-|---|---|---|
-| `scrolling` | yes — the row is wider than the viewport | pans the row to reveal it (`scrolling:follow_focus`) |
-| second monitor | yes — its windows are past the edge | brings that monitor's window in |
-| `dwindle`, `master` | no — everything is on screen | nothing; the cursor rests on the edge |
-
-There is no API for the other approach — moving the viewport *without* focusing.
-`hl.dsp.focus` takes only `window`, `direction`, `monitor`, `workspace` and
-`urgent_or_last`; the `scrolling` layout's `layoutmsg` vocabulary is
-`fit_into_view promote colresize consume consume_or_expel inhibit_scroll monocle`
-and none of them pans on its own (`+col`, `-col`, `toend`, `tobeg` and `expand`
-return *"no such layoutmsg for scrolling"* — they belong to `master`). With
-`scrolling:follow_focus = true`, focus **is** the pan mechanism.
-
-##### Keeping the pointer continuous
-
-A focus change can move the pointer in two ways, and both would break a sweep in
-half, so the landing position is always recomputed rather than accepted:
-
-- **Hyprland drops the pointer on the centre of a window it focuses** — measured
-  367px from the edge the sweep left through, with the cross-axis position thrown
-  away entirely.
-- **The workspace can pan under a stationary pointer.** Focusing a partly-visible
-  column moved it from `1503..2237` to `790..1524`; the pointer stayed at screen
-  x=1503 and so ended up near the window's right side having entered from its
-  left.
-
-Both are fixed by remembering where in the target window the pointer belongs —
-the entering edge when crossing in from outside, or its existing offset when it
-is already inside — and restoring that once the geometry settles, with the
-cross-axis coordinate preserved and clamped into the new window's span.
-
-```
-double-tapping right across a scrolling row (y held at 300 throughout):
-  300 -> 746 -> 760 -> 1489 -> 790 -> 1524 -> 1535 -> stays
-                               ^^^ crossed in; row panned, pointer followed it
-```
-
-The correction is safe to make because Hyprland issues exactly **one** warp, at
-focus time, settled within 23ms. A correction dispatched 0, 25, 60 or 130ms
-later stuck in all four cases — there is no second warp to lose a race against.
-Nor is there any need to wait out the pan animation: `at`/`size` report the
-*settled* geometry immediately, while the row is still visibly sliding.
-
-The user never sees the centre excursion, because `curX`/`curY` never adopt it
-and the visible pointer is the plugin's own marker
-(`cursor:hide_on_key_press` hides the real one) — the marker goes from the old
-edge straight to the new one.
-
-**Focus is re-resolved once the pointer has landed.** The landing is correct
-relative to the window crossed into, but the pan that revealed it slid that window
-*underneath* anything floating, which does not pan with the row — so the pointer
-can come to rest over a float while focus sits on the tiled window behind it.
-Observed: crossing right put the pointer at `790 + 30 = 820`, inside a float
-spanning `733..1532`, with focus left on the tiled window. Re-resolving at the
-final position settles in one further pass, since the second attempt finds the
-window it just focused and stops.
-
-**The whole edge list is refreshed too**, not just the pointer. A pan moves every
-window on the workspace — one went from `12` to `-701` — so the coordinates
-collected before the crossing describe edges that no longer exist.
-
-**Focusing must never change workspace.** Window lookup filters by Quickshell's
-cached `focusedWorkspace`, and a stale cache hands back windows from elsewhere —
-which focusing would then follow, dragging you to another workspace. This was
-observed: switching workspace outside the shell left the cache pointing at the
-old one and a skitter focused a window there. So the refresh covers workspaces
-and monitors as well as toplevels, and a window's own workspace is re-checked
-immediately before focusing it.
-
-Edges come from Quickshell's Hyprland toplevels, whose `lastIpcObject` carries
-`at`/`size` **in process** — no subprocess, so the set is rebuilt on every
-keypress and keeps up with windows that move. Only windows on the focused
-monitor's active workspace count, and each edge remembers the span it covers on
-the *other* axis: an edge you are not level with is not one you could collide
-with. The screen's own bounds are always included, so there is always something
-to snap to and Shift never leaves you with nowhere to go.
-
-Candidates must be *strictly* ahead (`edgeEpsilon`), which is what stops a sweep
-sticking: a held key snaps onto each edge as it passes and then carries on past
-it, rather than pinning to the first one it meets.
-
-#### Fast tapping and auto-repeat share a window
-
-Hyprland's key repeat also arrives on the same key well inside `fast_tap_ms`, so
-"tapped again quickly" and "still held down" have to be told apart or a held key
-would skitter to the screen edge instead of sweeping. Two things separate them:
-
-- Anything within `repeatGapMs` (55ms) is classified as a repeat and drives the
-  sweep, so only the 55–135ms band can count as fast tapping.
-- A repeat **delayed under load** still lands in that band, so the event before
-  it is checked too (`prevGap`). A deliberate re-press can only follow a release,
-  so it is never preceded by another event one repeat-interval earlier; a delayed
-  repeat always is. Without this an identical 0.75s sweep measured 427px, 557px
-  and then 746px — that last one exactly a window edge, the cursor teleporting
-  mid-sweep.
-
-Consequences:
-
-- A **held** key never skitters. Its first repeat lands ~250ms out (outside
-  `fast_tap_ms`) and the rest arrive 25–34ms apart (inside `repeatGapMs`).
-- Tapping **faster than 55ms** is indistinguishable from auto-repeat, so it
-  sweeps rather than skitters. That is the floor, and it cannot be lifted without
-  key-release events, which this input path does not get.
-
-Measured from `x=0` against the same three windows:
-
-```
-3 taps @200ms apart  -> x=20    8, 12 (snapped), 20 — ordinary stepping
-4 taps @100ms apart  -> x=760   8, then skitter 12 -> 746 -> 760
-4 taps @70ms  apart  -> x=760   same
-hold 0.75s           -> x=407   sweeps, does not skitter
-5 taps @40ms apart   -> x=35    read as auto-repeat, so it sweeps
-```
-
-Measured against a workspace with windows at `x:12..746`, `x:760..1489` and
-`x:1503..2237` on a 1536px screen:
-
-```
-from x=0   tap right   ->    8    nothing within 8px, so a full step
-           tap right   ->   12    snapped: the window edge was 4px away
-           tap right   ->   20    nothing within 8px again
-  dbl-tap right      ->  746 -> 760 -> 1489 -> 1503 -> 1535 -> stays
-  dbl-tap left       -> 1503    and back again
-sweep right 0.75s      ->  406px  passes through edges, does not stick
-from y=0 dbl-tap down  ->   38 -> 852 -> 863   window top, bottom, screen
-```
-
-Shift is not read as a separate key — it cannot be, with no keyboard grab. The
-submap binds a `SHIFT + <key>` variant of **every** key, so whether Shift was
-down arrives with the event itself. This is also why the variants exist for keys
-Shift does nothing for: a bind matches on an exact modifier mask, so an unbound
-`SHIFT + <key>` would fall straight through to the focused app and type a
-character instead.
-
-Scrolling uses the same `h` with `scrollMaxRate` (25 detents/s at full
-acceleration) in place of `k`, and auto-repeats while held.
-
-Measured:
-
-```
-movement   tap        8px          scroll   tap      1 detent
-           hold 0.4s   92px                 hold 0.6s   4 detents
-           hold 0.75s 398px  (ideal 384)    hold 1.2s  13 detents
-           hold 1.0s  726px  (ideal 683)
-           hold 1.5s 1535px  = one screen width
-```
-
-Within ~6% of the model for holds past 0.75s; shorter holds fall below it because
-of the dead zone described next.
-
-#### Two platform limits worth knowing
-
-- **Presses shorter than `input:repeat_delay` (250ms) are indistinguishable.**
-  With no key release available, the only proof a key is *held* is its first
-  repeat, which lands 250ms in. So every press under 250ms is a `baseStep` tap
-  and the "0.25s taps give 1/6 speed" case degrades to "taps give one step
-  each" — frequency
-  still modulates speed, duration below 250ms does not. Getting that back needs a
-  helper reading `/dev/input` directly.
-- **A wheel event cancels Hyprland's key repeat.** Injecting a scroll through
-  ydotool kills the repeat of the key being held — measured, 40 repeats become 8.
-  So auto-scroll cannot ride repeats like movement does — the plugin would have
-  no evidence the key is still down. Each scroll key therefore carries a second,
-  `release = true` bind that runs
-  `omarchy-shell -q shell call moush scrollstop ''`. That is the one place
-  `exec_cmd` earns its keep: it is the only bind form that fires on release, and
-  it lands in ~35ms — inside a single detent, so scrolling stops where you let
-  go. Auto-scroll also self-caps at `scrollMaxMs` (8s) in case a release is ever
-  missed, and one subprocess per release beats one per 80ms poll.
-
-## How input actually gets here, and why
-
-This is the part that took the longest to get right, so it is worth writing
-down. The overlay takes **no keyboard focus at all**; every key arrives as a
-global shortcut dispatched from a bind inside the plugin's own submap.
-
-Both keyboard-grab modes are dead ends, measured against a click-logging
-Wayland client rather than guessed at:
-
-| `WlrLayershell.keyboardFocus` | keys | clicks reaching the app |
-|---|---|---|
-| `Exclusive` | delivered | **none** — an exclusive-focus layer makes Hyprland swallow every pointer event |
-| `OnDemand` | **one, then focus is lost** | delivered |
-| `None` + submap binds | delivered | delivered |
-
-A compositor-level bind probe is not enough to catch this: with `Exclusive` a
-plain `mouse:272` bind still fires, so the button clearly reaches Hyprland — it
-just never reaches the client. Only a real client that logs what it receives
-shows the difference.
-
-Two consequences fall out of the bind route:
-
-- **Two keys held at once needs the compositor asked directly.** Hyprland cancels
-  key repeat when *any* key is released and never hands it back to a key still
-  held, so pressing Right, then Left, then releasing Right stopped the cursor dead
-  even though Left was still down — `is_key_down` confirmed it was. Release binds
-  are no help: measured, once two bound keys are held, *neither* key's release
-  bind fires, and a held set built from them silently never empties. So when
-  repeats lapse the plugin asks `hl.is_key_down` which direction keys are down,
-  and either sustains the sweep or hands it to whichever direction is still held.
-
-  The question is evaluated in `bindings.lua`, which publishes its key table for
-  the purpose, so keysyms stay out of the plugin: `is_key_down` wants exact X
-  spellings — `Left` where the bind says `LEFT`, `i` where it says `I` — and
-  answers nil for anything it does not recognise. The reply names actions, like
-  everything else here.
-
-  The poll is armed `keysArmMs` before a hold would lapse, which never happens
-  during an ordinary sweep: repeats arrive every 25ms and push the deadline 55ms
-  out, so the margin is never crossed while they keep coming. It costs nothing
-  until repeats actually stop.
-
-- **Movement never waits for a key release**, because none is available to it:
-  a `release = true` bind fires when it dispatches `exec_cmd` but never when it
-  dispatches `hl.dsp.global`. Movement rides Hyprland's own key repeat instead
-  (250ms delay, then 40/s — close enough to the 150ms/50Hz ramp this used to
-  run on its own timer), and a key is taken to be up once repeats stop for
-  `repeatGapMs`. Scroll keys are the exception and take the `exec_cmd` route
-  deliberately; see below.
-- **Buttons and Tab ignore repeats.** Several of those keys are movement in
-  a direction in another mode, so they are bound as repeating; firing on a repeat
-  would turn a held key into a click storm.
-
-Keys you don't bind pass through to the focused app, so typing during a latched
-session inserts text. Bound keys are consumed and won't leak.
-
-## Requirements
-
-Cursor movement needs nothing — it goes over Quickshell's existing Hyprland
-socket. **Clicking and scrolling need `ydotool`**, because Wayland doesn't let a
-client synthesize pointer buttons and Hyprland's Lua API is keyboard-only
-(`hl.dsp.send_key_state` accepts `BTN_LEFT` but emits no pointer button):
+You can ask a running session what it thinks is going on:
 
 ```bash
-sudo pacman -S ydotool                   # also ships the /dev/uinput udev rule
-systemctl --user enable --now ydotool    # user service — no sudo
+omarchy-shell shell call moush probe ""
 ```
 
-Then reboot once, or `sudo modprobe uinput` to skip the reboot. Nothing else is
-needed on Omarchy: the `ydotool` package installs
-`/usr/lib/udev/rules.d/80-uinput.rules`, `uinput` is listed in
-`modules.devname` so its static node is created at boot with that rule's
-`root:input 0660`, and Omarchy already puts every user in the `input` group
-(`install/hardware/input-group.sh`). Don't hand-write a udev rule — the packaged
-one is enough.
-
-## Install
-
-1. Clone into `~/.config/omarchy/plugins/moush/` — the directory name must
-   match the manifest `id`, which is how `omarchy plugin add` names its clone.
-   Note the GlobalShortcut **appid** (also `moush`) is a separate identifier
-   from the plugin id, and every binding below references it — change one
-   without the other and all the bindings silently stop working.
-2. Copy the folder to `~/.config/omarchy/plugins/moush/`.
-3. Check it, then load and enable it:
-
-   ```bash
-   omarchy plugin validate ~/.config/omarchy/plugins/moush
-   omarchy-shell shell rescanPlugins
-   omarchy plugin enable moush
-   ```
-
-   `validate` only checks `manifest.json` — it never loads the QML. Set
-   `debug: true` in `Moush.qml` to trace keys (the log is at
-   `/run/user/$UID/quickshell/by-id/<id>/log.qslog`, read it with
-   `quickshell log <file>`), or ask the running plugin for its state:
-
-   ```bash
-   omarchy-shell shell call moush probe ""
-   # opened=true active=true sticky=false mode=mash modes=[mash,mash-lh] keys=17
-   ```
-
-4. Add the bindings from `bindings.lua.example` to `~/.config/hypr/bindings.lua`.
-
-Saving files under `~/.config/omarchy/plugins/` hot-reloads most edits, but a
-`keepLoaded` plugin like this one keeps its mounted instance — run
-`omarchy-restart-shell` to pick up QML changes.
-
-A latched session has no timeout and no Escape, so **Super + M is its only
-exit**. `CTRL + ALT + Escape` restores your keybindings if the shell dies
-holding the submap, but the overlay keeps its surface until
-`omarchy-shell shell hide moush`.
-
-## Choosing the chord
-
-`SUPER + M` is deliberate: Omarchy leaves it unbound, and `M` is not one of the
-keys the plugin binds in-session. Both halves matter.
-
-The earlier chord was `SUPER + Left Alt`, which collided with the 25 `SUPER+ALT`
-bindings Omarchy ships — reaching for `SUPER+ALT+SPACE` armed the plugin instead
-and the submap swallowed the third key.
-
-If you want to move it, two traps are worth knowing:
-
-- **Omarchy binds some `SUPER` combinations by raw keycode**, and
-  `hyprctl binds` reports those with an *empty* key name. `SUPER+1`…`SUPER+0`
-  (workspaces, `code:10`–`code:19`) and `SUPER+minus`/`SUPER+equal` (window
-  resize, `code:20`/`code:21`) therefore look free to a name-based scan and are
-  not. Of 43 taken `SUPER+<key>` combinations, 12 are invisible that way.
-- **The chord key must not be one of the plugin's in-session keys.** Those are
-  bound with `ignore_mods`, so they fire whatever modifiers are held — a chord on
-  one of them would move the cursor or click while exiting. That rules out
-  `A D H I R Y Z period Prior Next`, which are otherwise free.
-
-What that leaves: letters `B E M N Q U`, punctuation `semicolon apostrophe
-bracketleft bracketright grave backslash`, and `DELETE END INSERT F1`–`F12`.
-
-`SUPER + Caps_Lock` also works, but **only bound by keycode as `code:66`**:
-Omarchy sets `kb_options = "compose:caps"`, so the physical key emits
-`Multi_key`, not `Caps_Lock`. A keysym bind registers and silently never fires,
-and a `release = true` bind on it would have to name `Multi_key` too.
+If the shell itself gets stuck holding the keyboard, `Ctrl + Alt + Escape` restores
+your normal bindings.

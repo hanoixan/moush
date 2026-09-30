@@ -17,7 +17,7 @@ MOUSH = {
 
   -- ---- the trackball -----------------------------------------------------
   mash_gain    = 0.66,     -- impulse per (unit/s)^3, in the coordinate space above
-  mash_vmax    = 3000,   -- px/s ceiling, and so the longest throw: vmax/3 pixels
+  mash_vmax    = 3500,   -- px/s ceiling, and so the longest throw: vmax/3 pixels
   mash_samples = 4,      -- presses a fit may see
   mash_strategy = "lsq",
   mash_debug_strategies = "lsq",

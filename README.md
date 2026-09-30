@@ -312,7 +312,7 @@ Add another entry under `modes`. `Tab` cycles through them in alphabetical order
 
 ```lua
 mash_gain    = 0.66,   -- how hard each key press shoves the pointer
-mash_vmax    = 3000,   -- its top speed, which sets the longest roll
+mash_vmax    = 3500,   -- its top speed, which sets the longest roll
 mash_samples = 4,      -- how many recent presses the direction is read from
 ```
 

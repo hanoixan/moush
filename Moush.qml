@@ -351,6 +351,7 @@ Item {
           : root.scrollScaleAt(Date.now() - root.scrollHoldAt).toFixed(2))
       + " carryGap=" + Math.round(root.carryGap) + " carried=" + root.carried
       + " dbg=" + root.mashDebug + " overcap=" + root.dbgOverCap
+      + " dspeed=" + root.dbgDriveSpeed.toFixed(0)
       + " hits=" + root.dbgHits.length
   }
   property int scrollReps: 0                  // diagnostics for the scroll ramp
@@ -957,7 +958,7 @@ Item {
       root.mashTrail = []
       root.dbgStrats = ({}); root.dbgHits = []
       root.dbgDriveAt = 0; root.dbgDriveX = 0; root.dbgDriveY = 0
-      root.dbgOverCap = false
+      root.dbgOverCap = false; root.dbgDriveSpeed = 0
       root.clusterN = 0
       root.clusterExtent = false
       root.scrollWant = 0; root.scrollSent = 0
@@ -1031,6 +1032,7 @@ Item {
     // for more than the ceiling allows -- the point past which swiping harder
     // stops making any difference.
     root.dbgOverCap = (sp > root.mashVMax)
+    root.dbgDriveSpeed = sp
     if (sp > cap) {
       root.ballVX *= cap / sp
       root.ballVY *= cap / sp
@@ -1238,6 +1240,7 @@ Item {
   property real dbgDriveY: 0
   property real dbgDriveAt: 0
   property bool dbgOverCap: false             // this press asked for more than vmax
+  property real dbgDriveSpeed: 0              // px/s it asked for, before the clamp
   property real dbgLastAt: 0
   property var dbgLog: []                     // {g, dt, grid, imp} newest first
   property var dbgAux: ({})                   // action -> when it was last struck
@@ -1859,8 +1862,12 @@ Item {
         var dcol = root.dbgOverCap ? root.dbgDriveMax : root.dbgDriveOk
         ctx.fillStyle = root.dbgRgba(dcol[0], dcol[1], dcol[2], 0.95)
         ctx.fillRect(8, 9, 8, 2)
-        ctx.fillText("drive:" + root.mashStrategy
-                     + (root.dbgOverCap ? "  at vmax" : ""), 20, 5)
+        // The speed the last press asked for, and the ceiling it is measured
+        // against, named only when it has been passed.
+        var dtxt = "drive:" + root.mashStrategy
+        if (root.dbgDriveAt > 0) dtxt += "  " + Math.round(root.dbgDriveSpeed) + " px/s"
+        if (root.dbgOverCap) dtxt += "  at vmax " + Math.round(root.mashVMax)
+        ctx.fillText(dtxt, 20, 5)
         ctx.fillStyle = root.dbgRgba(255, 255, 255, 0.5)
         ctx.fillText(root.mode, dbgCanvas.width - 8 - root.mode.length * 6, 5)
 

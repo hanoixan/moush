@@ -205,11 +205,18 @@ legible while you are learning it, or after you have rearranged the keys.
 The top row shows every key the layout binds that is not part of the grid, each
 under the name of its job, and a key turns red while it is held.
 
-**The arrow turns cyan when a swipe asks for more speed than `mash_vmax` allows**,
-and the heading says `at vmax` alongside it. That is the point past which swiping
-harder changes nothing, so it tells you whether you are using the range you have
-or pressing against the ceiling. It is measured before the clamp, so it reflects
-what the swipe asked for rather than what it got. The grid below
+**The heading reads out the speed the last press asked for**, and **the arrow turns
+cyan once that passes `mash_vmax`**, which is then named beside it:
+
+```
+drive:lsq   137 px/s                    within the ceiling, arrow green
+drive:lsq  2094 px/s   at vmax 1000     past it, arrow cyan
+```
+
+That is the point beyond which swiping harder changes nothing, so between them
+they say whether you are using the range you have or pressing against the ceiling.
+The speed is measured before the clamp, so it is what the swipe asked for rather
+than what it was given. The grid below
 shows your keys where they sit under your hand, lighting up as you strike them and
 shading brighter green with how recent each strike was, so you can see the shape of
 the gesture you just made. An arrow shows the direction the roll was read as, and a

@@ -1136,10 +1136,12 @@ Item {
       else root.fineDown = true
       root.modEventAt = now
       root.pokeIdle()
-      // Pressing a modifier stops the held key repeating, so the sweep is about to
+      // Pressing a modifier stops the held key repeating, so a sweep is about to
       // lapse. Ask straight away rather than waiting for the motion timer to notice,
-      // which costs another round trip's worth of decay.
-      if (root.activeKind === "move" && !keysPoll.running) {
+      // which costs another round trip's worth of decay. Not while scrolling: there
+      // is no sweep to rescue there, and the extra question would compete with the
+      // one already watching for the scroll key's release.
+      if (root.activeKind === "move" && !root.wheelHeld && !keysPoll.running) {
         keysPoll.start()
         if (!keysProbe.running) { root.keysAskedAt = now; keysProbe.running = true }
       }

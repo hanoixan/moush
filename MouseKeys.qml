@@ -125,6 +125,10 @@ Item {
   property real scrollRepeatScaleMax: 10
   property real scrollIncreaseDelay: 1.5
   property real scrollIncreaseTime: 5
+  // Double-tapped and held, a vertical key skips the ramp entirely and goes
+  // straight to its top speed, for crossing a long document in one gesture.
+  property real scrollRepeatScaleUltra: 100
+  property bool scrollUltra: false
   // Hyprland stops repeating a key as soon as a second bound key is held, and in
   // wheel mode 7 always is, so the repeat has to be generated here and the release
   // asked about. These are that clock, not the compositor's.
@@ -359,6 +363,7 @@ Item {
       + " samples=" + root.mashSamples
       + " sramp=" + root.scrollRepeatScaleMin + "-" + root.scrollRepeatScaleMax
       + "/" + root.scrollIncreaseDelay + "s+" + root.scrollIncreaseTime + "s"
+      + " ultra=" + root.scrollUltra + "/" + root.scrollRepeatScaleUltra
       + " sreps=" + root.scrollReps + "/" + root.scrollDets
       + " sscale=" + (root.scrollHoldName === "" ? "-"
           : root.scrollScaleAt(Date.now() - root.scrollHoldAt).toFixed(2))
@@ -663,6 +668,7 @@ Item {
 
   // 1x while the hold is young, then a straight ramp to the maximum, then flat.
   function scrollScaleAt(ms) {
+    if (root.scrollUltra) return root.scrollRepeatScaleUltra
     var lo = root.scrollRepeatScaleMin, hi = root.scrollRepeatScaleMax
     var delay = root.scrollIncreaseDelay * 1000, span = root.scrollIncreaseTime * 1000
     if (ms <= delay) return lo
@@ -1557,12 +1563,32 @@ Item {
         // Wheel mode owns the direction keys outright: first press a detent, held
         // a growing repeat, struck twice the end of the view.
         if (repeat) { root.scrollRepeat(name, mdir, now); return }
-        if (same && fastTap) { root.scrollPress(mdir, true); return }
+        if (same && fastTap) {
+          // Struck twice and kept down: straight to the top speed, no ramp and no
+          // starting delay. Only the vertical pair — a document is long, not wide.
+          if (Math.abs(mdir[1]) > Math.abs(mdir[0])) {
+            root.scrollHoldName = name
+            root.scrollHoldAt = now
+            root.scrollFrac = 0
+            root.scrollReps = 0
+            root.scrollDets = 0
+            root.scrollUltra = true
+            root.pokeIdle()
+            root.scrollRepeat(name, mdir, now)     // the first burst, at once
+            scrollTimer.interval = root.scrollRepeatMs
+            scrollTimer.restart()
+            scrollKeyPoll.restart()
+            return
+          }
+          root.scrollPress(mdir, true)             // sideways keeps end-of-view
+          return
+        }
         root.scrollHoldName = name
         root.scrollHoldAt = now
         root.scrollFrac = 0
         root.scrollReps = 0
         root.scrollDets = 1                    // the press itself
+        root.scrollUltra = false               // a fresh press is an ordinary one
         root.pokeIdle()
         root.scrollPress(mdir, false)
         scrollTimer.interval = root.scrollStartMs
@@ -1721,6 +1747,7 @@ Item {
       + '.. " scroll_increase_delay=" .. tostring(m.scroll_increase_delay or "") '
       + '.. " scroll_increase_time=" .. tostring(m.scroll_increase_time or "") '
       + '.. " scroll_repeat_ms=" .. tostring(m.scroll_repeat_ms or "") '
+      + '.. " scroll_repeat_scale_ultra=" .. tostring(m.scroll_repeat_scale_ultra or "") '
       + '.. " mash_nudge_repeat=" .. tostring(m.mash_nudge_repeat) '
       + '.. " mash_nudge_delay_ms=" .. tostring(m.mash_nudge_delay_ms or "") '
       + '.. " mash_nudge_rate_ms=" .. tostring(m.mash_nudge_rate_ms or "")']
@@ -1782,7 +1809,8 @@ Item {
           if (kv[0] === "mash_gain" || kv[0] === "mash_grip_friction"
               || kv[0] === "mash_nudge_inner" || kv[0] === "mash_nudge_outer"
               || kv[0] === "scroll_repeat_scale_min" || kv[0] === "scroll_repeat_scale_max"
-              || kv[0] === "scroll_increase_delay" || kv[0] === "scroll_increase_time") {
+              || kv[0] === "scroll_increase_delay" || kv[0] === "scroll_increase_time"
+              || kv[0] === "scroll_repeat_scale_ultra") {
             var g = parseFloat(kv[1])
             if (!(g > 0)) continue
             if (kv[0] === "mash_gain") root.mashGain = g
@@ -1792,6 +1820,7 @@ Item {
             else if (kv[0] === "scroll_repeat_scale_min") root.scrollRepeatScaleMin = g
             else if (kv[0] === "scroll_repeat_scale_max") root.scrollRepeatScaleMax = g
             else if (kv[0] === "scroll_increase_delay") root.scrollIncreaseDelay = g
+            else if (kv[0] === "scroll_repeat_scale_ultra") root.scrollRepeatScaleUltra = g
             else root.scrollIncreaseTime = g
             continue
           }
@@ -2001,6 +2030,7 @@ Item {
         if (String(text).indexOf("true") >= 0) return
         root.scrollHoldName = ""                      // let go: the ramp is over
         root.scrollFrac = 0
+        root.scrollUltra = false
         scrollTimer.stop()
         scrollKeyPoll.stop()
       }
@@ -2057,6 +2087,7 @@ Item {
         root.scrollAcc = 0
         root.scrollHoldName = ""               // the ramp ends with wheel mode
         root.scrollFrac = 0
+        root.scrollUltra = false
         scrollTimer.stop()
         scrollKeyPoll.stop()
         wheelPoll.stop()

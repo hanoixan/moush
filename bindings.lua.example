@@ -56,6 +56,10 @@ hl.bind("SUPER + M", hl.dsp.global("mousekeys:toggle"),
 --   scroll_repeat_scale_min  detents per repeat to begin with
 --   scroll_repeat_scale_max  and once the ramp has run out
 --   scroll_increase_delay    seconds at the minimum before the ramp starts
+--   scroll_repeat_scale_ultra  detents per repeat when a vertical key is struck
+--                            twice and held: the ramp is skipped entirely and it
+--                            starts here, for crossing a long document at once.
+--                            Sideways keys keep their end-of-view double-tap.
 --   scroll_repeat_ms         between repeats. The plugin drives these itself:
 --                            Hyprland stops repeating a key once a second bound
 --                            key is held, and in wheel mode 7 always is.
@@ -102,6 +106,7 @@ MOUSEKEYS = {
   scroll_repeat_scale_max = 10,
   scroll_increase_delay = 1.5,
   scroll_increase_time = 5,
+  scroll_repeat_scale_ultra = 100,
   scroll_repeat_ms = 60,
   mash_nudge = false,
   mash_nudge_inner = 1,

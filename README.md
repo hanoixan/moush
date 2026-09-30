@@ -138,21 +138,24 @@ the way your hand went. Mash `Y U I O` left to right and it rolls right. Mash
 `I K ,` downward and it rolls down. It reads the direction from the order you hit
 the keys, so no single key means anything on its own.
 
-How far it rolls depends on how far your hand travels in one go:
+How far it rolls depends on both how far your hand travels and how fast, the way a
+trackball does. Measured across a row:
 
-| keys crossed in one gesture | pointer travels |
-|---|---|
-| two | about 320 px |
-| three | about 420 px |
-| four | about 535 px |
+```
+keys crossed     slow      medium     fast
+                 170ms     110ms      60ms
+two                31px      78px     264px
+three              61px     137px     388px
+four               90px     206px     446px
+```
+
+So a short, unhurried swipe nudges the pointer a little way and a long, quick one
+throws it most of a screen, with everything in between available without thinking
+about it.
 
 Keys struck more than about a fifth of a second apart are treated as separate taps
-rather than one gesture, which is what lets tapping and mashing share the same
-keys without getting in each other's way.
-
-With the settings as shipped, the roll reaches its top speed almost immediately, so
-distance follows how far across the keys you went rather than how hard you hit
-them. If you would rather have speed matter, see `mash_gain` below.
+rather than one gesture, which is what lets tapping and mashing share the same keys
+without getting in each other's way.
 
 ## Clicking and dragging
 
@@ -289,7 +292,7 @@ Add another entry under `modes`. `Tab` cycles through them in alphabetical order
 ### How mashing feels
 
 ```lua
-mash_gain    = 20,     -- how hard each key press shoves the pointer
+mash_gain    = 0.5,    -- how hard each key press shoves the pointer
 mash_vmax    = 1000,   -- its top speed, which sets the longest roll
 mash_samples = 4,      -- how many recent presses the direction is read from
 ```
@@ -313,9 +316,10 @@ gain    slow     medium   fast     spread
  0.05     16px     41px     84px   5.2x   too short to cross a screen
 ```
 
-Around `0.5` is where a swipe answers to how fast you make it while still crossing
-a useful distance at speed. Higher values trade that away for a constant, long
-throw.
+`0.5` is what ships, because it answers to how fast you swipe while still crossing
+a useful distance at speed. Higher values trade that away: by `20` every swipe is
+past the cap before you have finished it, so they all travel the same distance and
+swiping harder changes nothing.
 
 `mash_vmax` is the ceiling itself, and so the longest possible roll. Raise it along
 with the gain if you want the fast end to reach further.

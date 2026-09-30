@@ -148,8 +148,9 @@ two                53px     149px     325px
 three              53px     262px     388px
 four              101px     372px     443px
 
-                 measured at mash_vmax 1000; the ceiling now ships at 3000,
-                 which lifts the fast end and leaves the slow end as it is
+                 measured at mash_gain 1.0 and mash_vmax 1000; both have
+                 since changed, so treat these as the shape rather than the
+                 current figures
 ```
 
 So a short, unhurried swipe nudges the pointer a little way and a long, quick one
@@ -310,7 +311,7 @@ Add another entry under `modes`. `Tab` cycles through them in alphabetical order
 ### How mashing feels
 
 ```lua
-mash_gain    = 1.0,    -- how hard each key press shoves the pointer
+mash_gain    = 0.66,   -- how hard each key press shoves the pointer
 mash_vmax    = 3000,   -- its top speed, which sets the longest roll
 mash_samples = 4,      -- how many recent presses the direction is read from
 ```

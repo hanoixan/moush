@@ -83,7 +83,10 @@ Item {
   // cluster, and a fit is only ever made from presses within one. Mixing two
   // sweeps separated by a pause produced a direction belonging to neither.
   readonly property int mashClusterMs: 200
-  readonly property int mashTrailMax: 16
+  // The fit sees at most this many of the most recent presses. Still clipped by
+  // the cluster — a new gesture starts empty — so it is the last mashSamples
+  // events *within* the current cluster, never a mix of two.
+  readonly property int mashSamples: 5
   readonly property var mashStrategies: ["cpa", "lsq", "net", "pca", "ewma"]
   readonly property real dbgPitch: 26         // px between grid cells
   readonly property real dbgScale: 4          // px drawn per key-width/second
@@ -244,7 +247,8 @@ Item {
   property var dbgStrats: ({})                // name -> {x, y, t}, newest result each
   property var dbgLog: []                     // {g, dt, grid} newest first, for the log
   property real dbgLogAt: 0                   // previous logged event, for the delta
-  property var mashTrail: []                  // the current cluster's key-downs
+  property var mashTrail: []                  // the last mashSamples of the cluster
+  property int clusterN: 0                    // presses in the cluster, uncapped
   property var mashSubs: []                   // recent subvectors: {x, y, t}
   property real ballVX: 0
   property real ballVY: 0
@@ -296,7 +300,7 @@ Item {
       + " ball=" + root.ballVX.toFixed(0) + "," + root.ballVY.toFixed(0)
       + " subs=" + root.mashSubs.length + " wheel=" + root.wheelHeld
       + " gain=" + root.mashGain.toFixed(2) + " vmax=" + root.mashVMax
-      + " cluster=" + root.mashTrail.length
+      + " cluster=" + root.clusterN + " win=" + root.mashTrail.length
       + " strategy=" + root.mashStrategy
       + " shown=[" + root.mashDebugStrategies.join(",") + "]"
       + " dbg=" + root.mashDebug + " labels=" + Object.keys(root.mashLabels).length
@@ -948,9 +952,9 @@ Item {
   // they are interchangeable: bindings.lua picks which one steers the pointer, and
   // any of them can be drawn in the debug view alongside it for comparison.
 
-  // The cluster *is* the window: the trail holds exactly the current one, so a
-  // strategy asking for "recent presses" gets the gesture in progress and nothing
-  // from before the pause that ended the last one.
+  // The trail is already capped at mashSamples and cleared between clusters, so
+  // this is the last few presses of the gesture in progress and nothing from
+  // before the pause that ended the previous one.
   function mashWindow() { return root.mashTrail }
 
   // cpa — magnitude-weighted mean of the fitted subvectors. Longer hops count for
@@ -1079,7 +1083,9 @@ Item {
       root.mashTrail = []; root.mashSubs = []
       root.dbgStrats = ({}); root.dbgHits = []; root.dbgVecs = []
       root.dbgDriveAt = 0; root.dbgDriveX = 0; root.dbgDriveY = 0
+      root.clusterN = 0
     }
+    root.clusterN += 1
 
     root.mashCount += 1
     root.mashLog = (root.mashLog + " " + name).slice(-70)
@@ -1088,7 +1094,7 @@ Item {
     // One trail, long enough for the widest window any strategy asks for; each
     // reads whatever slice of it it wants.
     var hist = root.mashTrail.concat([{ x: pos.x, y: pos.y, t: now }])
-    if (hist.length > root.mashTrailMax) hist = hist.slice(hist.length - root.mashTrailMax)
+    if (hist.length > root.mashSamples) hist = hist.slice(hist.length - root.mashSamples)
     root.mashTrail = hist
     root.dbgHits = root.dbgHits.concat([{ name: name, t: now }])
     root.dbgLastAt = now
@@ -1096,7 +1102,12 @@ Item {
       var sv = root.mashSubvector(hist[hist.length - 3], hist[hist.length - 2],
                                   hist[hist.length - 1])
       root.dbgVecs = root.dbgVecs.concat([sv])
-      if (sv.ok) root.mashSubs = root.mashSubs.concat([sv])
+      if (sv.ok) {
+        // Five events make three overlapping triples, so cpa keeps that many to
+        // stay level with the window the others fit over.
+        var keep = Math.max(1, root.mashSamples - 2)
+        root.mashSubs = root.mashSubs.concat([sv]).slice(-keep)
+      }
     }
     // Every strategy on the debug list is computed whether or not it is steering,
     // which is the point: they can be compared against each other live.

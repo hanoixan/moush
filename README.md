@@ -138,12 +138,22 @@ Quartering keeps a column step and a row step the same distance, so the grid
 measures the way it feels under the hand rather than the way it is easiest to
 type out.
 
+**The fit sees the last `mashSamples` (5) presses.** Older ones drop out, so a
+long mash steers by what your hand is doing now rather than by an average over the
+whole gesture. `cpa` keeps three subvectors to match, since five events make three
+overlapping triples.
+
+```
+presses in cluster   2   3   5   6   8
+window               2   3   5   5   5
+cpa subvectors       0   1   3   3   3
+```
+
 **Presses are grouped into clusters, and a fit never spans two.** A gap longer
 than `mashClusterMs` (200ms) ends the gesture, and the next press starts a fresh
 cluster with nothing carried over. Without that, two sweeps either side of a pause
-were fitted together and produced a direction belonging to neither. The cluster
-*is* the window every strategy reads — there is no separate sliding window any
-more.
+were fitted together and produced a direction belonging to neither. The cluster bounds what a fit may see; the five-press window above bounds it
+further.
 
 ```
 presses 52ms apart   -> cluster = 4     one gesture

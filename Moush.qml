@@ -350,7 +350,8 @@ Item {
       + " sscale=" + (root.scrollHoldName === "" ? "-"
           : root.scrollScaleAt(Date.now() - root.scrollHoldAt).toFixed(2))
       + " carryGap=" + Math.round(root.carryGap) + " carried=" + root.carried
-      + " dbg=" + root.mashDebug + " hits=" + root.dbgHits.length
+      + " dbg=" + root.mashDebug + " overcap=" + root.dbgOverCap
+      + " hits=" + root.dbgHits.length
   }
   property int scrollReps: 0                  // diagnostics for the scroll ramp
   property int scrollDets: 0
@@ -956,6 +957,7 @@ Item {
       root.mashTrail = []
       root.dbgStrats = ({}); root.dbgHits = []
       root.dbgDriveAt = 0; root.dbgDriveX = 0; root.dbgDriveY = 0
+      root.dbgOverCap = false
       root.clusterN = 0
       root.clusterExtent = false
       root.scrollWant = 0; root.scrollSent = 0
@@ -1025,6 +1027,10 @@ Item {
     // far above the ceiling and gets clamped back to exactly the same roll.
     var cap = mod === "f" ? root.mashVMax * root.fineRollScale : root.mashVMax
     var sp = Math.sqrt(root.ballVX * root.ballVX + root.ballVY * root.ballVY)
+    // Measured here, before the clamp, so the overlay can say when a swipe asked
+    // for more than the ceiling allows -- the point past which swiping harder
+    // stops making any difference.
+    root.dbgOverCap = (sp > root.mashVMax)
     if (sp > cap) {
       root.ballVX *= cap / sp
       root.ballVY *= cap / sp
@@ -1231,6 +1237,7 @@ Item {
   property real dbgDriveX: 0
   property real dbgDriveY: 0
   property real dbgDriveAt: 0
+  property bool dbgOverCap: false             // this press asked for more than vmax
   property real dbgLastAt: 0
   property var dbgLog: []                     // {g, dt, grid, imp} newest first
   property var dbgAux: ({})                   // action -> when it was last struck
@@ -1252,6 +1259,8 @@ Item {
   readonly property var dbgKeyCold: [64, 168, 92]    // struck first
   readonly property var dbgKeyHot: [92, 250, 132]    // struck most recently
   readonly property var dbgKeyDown: [236, 84, 72]    // an aux key under the finger
+  readonly property var dbgDriveOk: [64, 255, 128]   // the drive vector, within vmax
+  readonly property var dbgDriveMax: [64, 232, 255]  // ...and asking for beyond it
 
   // Black on a light face, white on a dark one. The palette above is picked so the
   // struck states all land on the light side, but the guard costs three lines and
@@ -1847,9 +1856,11 @@ Item {
         ctx.font = "10px monospace"
         ctx.textBaseline = "top"
         ctx.textAlign = "left"
-        ctx.fillStyle = root.dbgRgba(64, 255, 128, 0.95)
+        var dcol = root.dbgOverCap ? root.dbgDriveMax : root.dbgDriveOk
+        ctx.fillStyle = root.dbgRgba(dcol[0], dcol[1], dcol[2], 0.95)
         ctx.fillRect(8, 9, 8, 2)
-        ctx.fillText("drive:" + root.mashStrategy, 20, 5)
+        ctx.fillText("drive:" + root.mashStrategy
+                     + (root.dbgOverCap ? "  at vmax" : ""), 20, 5)
         ctx.fillStyle = root.dbgRgba(255, 255, 255, 0.5)
         ctx.fillText(root.mode, dbgCanvas.width - 8 - root.mode.length * 6, 5)
 
@@ -1899,10 +1910,6 @@ Item {
         }
 
         ctx.font = "10px monospace"
-        var dm = Math.sqrt(root.dbgDriveX * root.dbgDriveX + root.dbgDriveY * root.dbgDriveY)
-        arrow(ox, oy, root.dbgDriveX, root.dbgDriveY,
-              root.dbgRgba(64, 255, 128, 1), root.dbgDriveAt > 0 ? 1 : 0, dm * root.dbgScale)
-
         for (var si = 0; si < root.mashDebugStrategies.length; si++) {
           var sn = root.mashDebugStrategies[si]
           var rec = root.dbgStrats[sn]
@@ -1913,6 +1920,14 @@ Item {
           arrow(ox, oy, rec.x, rec.y, root.dbgStratColor(sn, 1), 1, rm * root.dbgScale)
           ctx.setLineDash([])
         }
+
+        // Drawn last so it sits on top. The strategy steering the pointer draws its
+        // own vector in the same place, and with one strategy left that is always
+        // the same line, which hid the drive colour completely.
+        var dm = Math.sqrt(root.dbgDriveX * root.dbgDriveX + root.dbgDriveY * root.dbgDriveY)
+        arrow(ox, oy, root.dbgDriveX, root.dbgDriveY,
+              root.dbgRgba(dcol[0], dcol[1], dcol[2], 1),
+              root.dbgDriveAt > 0 ? 1 : 0, dm * root.dbgScale)
 
         // Keys last so they sit over the vector origin rather than under it. Each is
         // shaded by *when* within the cluster it was struck — first press dark, most

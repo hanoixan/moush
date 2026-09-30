@@ -139,6 +139,13 @@ Item {
   function cycleMode() {
     var i = root.modeNames.indexOf(root.mode)
     root.mode = root.modeNames[(i + 1) % root.modeNames.length]
+    // The overlay is keyed on grid *indices*, so every one of them now means a
+    // different key. Carrying the cluster over would shade the new grid by the old
+    // mode's presses; the aux flashes belong to keys that may not exist here.
+    root.dbgHits = []
+    root.dbgStrats = ({})
+    root.dbgDriveAt = 0
+    root.dbgAux = ({})
     if (root.opened) root.hypr('hl.dsp.submap("mousekeys-' + root.mode + '")')
     root.saveState()
     settings.running = true                   // the new mode brings its own keys
@@ -184,7 +191,8 @@ Item {
       return
     }
     if (k === "modes") { if (v !== "") root.modeNames = v.split(","); return }
-    if (k === "lmb" || k === "mmb" || k === "rmb" || k === "wheel" || k === "fine") {
+    if (k === "lmb" || k === "mmb" || k === "rmb" || k === "wheel" || k === "fine"
+        || k === "cycle" || k === "debug" || k === "strategy") {
       var mk = ({})
       for (var q in root.modeKeys) mk[q] = root.modeKeys[q]
       mk[k] = v
@@ -223,6 +231,9 @@ Item {
       var eq = parts[i].indexOf("=")
       if (eq > 0) root.applySetting(parts[i].slice(0, eq), parts[i].slice(eq + 1))
     }
+    // The grid and the aux row are both this mode's, and they only exist once this
+    // has run, so a mode cycle redraws from here rather than from cycleMode.
+    if (root.mashDebug) { root.dbgLastAt = Date.now(); dbgTimer.start() }
   }
 
   // ---- session state ---------------------------------------------------------
@@ -980,13 +991,21 @@ Item {
     root.lastAction = name
 
     if (name === "noop") { if (!repeat) root.dbgLogEvent("·", now, false); return }
-    if (name === "cycle") { if (!repeat) { root.pokeIdle(); root.cycleMode() } return }
-    if (name === "strategy") { if (!repeat) root.cycleStrategy(); return }
+    if (name === "cycle") {
+      // Flashed before the cycle, not after: cycleMode clears the aux marks along
+      // with the rest of the old mode's picture.
+      if (!repeat) { root.dbgAuxPress(name, now); root.pokeIdle(); root.cycleMode() }
+      return
+    }
+    if (name === "strategy") {
+      if (!repeat) { root.dbgAuxPress(name, now); root.cycleStrategy() }
+      return
+    }
     if (name === "debug") {
       if (!repeat) {
         root.mashDebug = !root.mashDebug
         root.pokeIdle()
-        if (root.mashDebug) dbgTimer.start()
+        if (root.mashDebug) { root.dbgAuxPress(name, now); dbgTimer.start() }
       }
       return
     }
@@ -994,19 +1013,21 @@ Item {
       // Held, not tapped: a press only says it went down, so the release has to be
       // asked about.
       if (!root.wheelHeld) { root.wheelHeld = true; root.scrollAcc = 0 }
+      root.dbgAuxPress(name, now)
       root.pokeIdle()
       if (!wheelPoll.running) wheelPoll.start()
       return
     }
     if (name === "fine") {
       if (!root.fineHeld) root.fineHeld = true
+      root.dbgAuxPress(name, now)
       root.pokeIdle()
       if (!finePoll.running) finePoll.start()
       return
     }
-    if (name === "lmb") { root.pokeIdle(); root.pressButton(1, name); return }
-    if (name === "mmb") { root.pokeIdle(); root.pressButton(3, name); return }
-    if (name === "rmb") { root.pokeIdle(); root.pressButton(2, name); return }
+    if (name === "lmb") { root.dbgAuxPress(name, now); root.pokeIdle(); root.pressButton(1, name); return }
+    if (name === "mmb") { root.dbgAuxPress(name, now); root.pokeIdle(); root.pressButton(3, name); return }
+    if (name === "rmb") { root.dbgAuxPress(name, now); root.pokeIdle(); root.pressButton(2, name); return }
 
     if (root.gridIndex(name) >= 0) {
       var dn = root.gridDir(name)
@@ -1088,6 +1109,7 @@ Item {
   property real dbgDriveAt: 0
   property real dbgLastAt: 0
   property var dbgLog: []                     // {g, dt, grid, imp} newest first
+  property var dbgAux: ({})                   // action -> when it was last struck
   property real dbgLogAt: 0
 
   readonly property real dbgPitch: 26         // px between grid cells
@@ -1098,9 +1120,75 @@ Item {
   readonly property real dbgLogLineH: 11
   readonly property real dbgLogH: root.dbgLogMax * root.dbgLogLineH + 20
   readonly property var dbgDashes: [[], [7, 4], [2, 4], [12, 4, 3, 4], [1, 5], [6, 3, 1, 3]]
+  // Every struck state is light enough to carry black text, which is why the cold
+  // end of the timing ramp is a deep green rather than the near-black grey it was:
+  // black on that was invisible, and it also made a cluster's first press hard to
+  // tell from a key nobody had touched.
   readonly property var dbgKeyIdle: [38, 38, 38]     // never struck this cluster
-  readonly property var dbgKeyCold: [52, 52, 52]     // struck first
-  readonly property var dbgKeyHot: [40, 235, 95]     // struck most recently
+  readonly property var dbgKeyCold: [64, 168, 92]    // struck first
+  readonly property var dbgKeyHot: [92, 250, 132]    // struck most recently
+  readonly property var dbgKeyDown: [236, 84, 72]    // an aux key under the finger
+
+  // Black on a light face, white on a dark one. The palette above is picked so the
+  // struck states all land on the light side, but the guard costs three lines and
+  // means a retuned colour can never silently produce unreadable text.
+  function dbgInk(bg, a) {
+    var lum = (0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2]) / 255
+    return lum > 0.45 ? root.dbgRgba(0, 0, 0, a) : root.dbgRgba(255, 255, 255, a)
+  }
+  readonly property real dbgAuxH: 40          // the aux row, labels included
+  readonly property real dbgAuxSlot: 34       // px per aux key
+  readonly property int dbgAuxFlashMs: 260    // how long a momentary key stays lit
+
+  // The aux keys in a fixed order, skipping whatever this mode leaves out, so the
+  // row depicts the mode in hand rather than a canonical keyboard.
+  readonly property var dbgAuxOrder: [["lmb", "lmb"], ["mmb", "mmb"], ["rmb", "rmb"],
+                                      ["wheel", "wheel"], ["fine", "fine"],
+                                      ["cycle", "cycle"], ["debug", "debug"],
+                                      ["strategy", "strat"]]
+  function dbgAuxRow() {
+    var out = []
+    for (var i = 0; i < root.dbgAuxOrder.length; i++) {
+      var a = root.dbgAuxOrder[i][0], k = root.modeKeys[a]
+      if (k === undefined || k === "") continue
+      out.push({ action: a, label: root.dbgAuxOrder[i][1], cap: root.dbgKeyCap(k) })
+    }
+    return out
+  }
+
+  // A key's face. Single characters and the punctuation table read as themselves;
+  // a longer name is a named key, and its first letter alone ("T" for TAB) tells
+  // you nothing, so keep three lower-case characters of it.
+  function dbgKeyCap(k) {
+    if (!k) return ""
+    if (root.dbgGlyphs[k]) return root.dbgGlyphs[k]
+    if (k.length === 1) return k
+    return k.slice(0, 3).toLowerCase()
+  }
+
+  // Held keys report their real state, so the red lasts exactly as long as the
+  // finger does. The momentary ones have no state to report and flash instead.
+  function dbgAuxDown(action, now) {
+    if (action === "wheel") return root.wheelHeld
+    if (action === "fine") return root.fineHeld
+    if (action === "lmb") return root.btnHeld === 1
+    if (action === "rmb") return root.btnHeld === 2
+    if (action === "mmb") return root.btnHeld === 3
+    return (now - (root.dbgAux[action] || 0)) < root.dbgAuxFlashMs
+  }
+
+  function dbgAuxHeld() {
+    return root.wheelHeld || root.fineHeld || root.btnHeld !== 0
+  }
+
+  function dbgAuxPress(action, now) {
+    var m = ({})
+    for (var q in root.dbgAux) m[q] = root.dbgAux[q]
+    m[action] = now
+    root.dbgAux = m
+    root.dbgLastAt = now
+    if (root.mashDebug) dbgTimer.start()
+  }
 
   function dbgRgba(r, g, b, a) {
     return "rgba(" + Math.round(r) + "," + Math.round(g) + "," + Math.round(b) + ","
@@ -1477,8 +1565,10 @@ Item {
     onTriggered: {
       dbgCanvas.requestPaint()
       // Nothing animates: a few passes cover the strategy results landing after the
-      // press that triggered them, and then there is nothing to redraw.
-      if (Date.now() - root.dbgLastAt > 300) dbgTimer.stop()
+      // press that triggered them, and then there is nothing to redraw. A held aux
+      // key is the exception -- it stays red for as long as the finger does, which
+      // is unbounded, and one more pass after the release is what clears it.
+      if (Date.now() - root.dbgLastAt > 300 && !root.dbgAuxHeld()) dbgTimer.stop()
     }
   }
 
@@ -1612,15 +1702,17 @@ Item {
       visible: root.active && root.mashDebug
       x: 32
       y: 44
-      width: root.dbgPitch * (root.dbgBounds().w + 1) + 2 * root.dbgMaxLen
+      width: Math.max(root.dbgPitch * (root.dbgBounds().w + 1) + 2 * root.dbgMaxLen,
+                      root.dbgAuxRow().length * root.dbgAuxSlot + 16)
       height: root.dbgPitch * root.dbgBounds().h + 2 * root.dbgMaxLen
-              + root.dbgFootH + root.dbgLogH
+              + root.dbgAuxH + root.dbgFootH + root.dbgLogH
       onVisibleChanged: if (visible) { requestPaint(); dbgTimer.start() }
       onPaint: {
         var ctx = getContext("2d")
         ctx.reset()
         var now = Date.now()
         var pad = root.dbgMaxLen, pitch = root.dbgPitch
+        var gtop = root.dbgAuxH + pad        // the grid starts below the aux row
         var b = root.dbgBounds()
         ctx.fillStyle = root.dbgRgba(0, 0, 0, 1)
         ctx.fillRect(0, 0, dbgCanvas.width, dbgCanvas.height)
@@ -1637,9 +1729,41 @@ Item {
         ctx.fillStyle = root.dbgRgba(255, 255, 255, 0.5)
         ctx.fillText(root.mode, dbgCanvas.width - 8 - root.mode.length * 6, 5)
 
+        // The aux row: everything this mode binds that is not part of the grid, in
+        // one line with its function named above the key that does it. Red says the
+        // key is down -- for the buttons and the two modifiers that is the real held
+        // state, so a drag or a wheel-hold stays lit for as long as it lasts.
+        var aux = root.dbgAuxRow()
+        ctx.textAlign = "center"
+        for (var ai = 0; ai < aux.length; ai++) {
+          var a = aux[ai]
+          var ax = 8 + ai * root.dbgAuxSlot + root.dbgAuxSlot / 2
+          var ay = 22 + root.dbgAuxH / 2
+          var down = root.dbgAuxDown(a.action, now)
+          ctx.font = "8px monospace"
+          ctx.textBaseline = "bottom"
+          ctx.fillStyle = root.dbgRgba(255, 255, 255, down ? 0.9 : 0.45)
+          ctx.fillText(a.label, ax, ay - 11)
+          var kc = down ? root.dbgKeyDown : root.dbgKeyIdle
+          ctx.fillStyle = root.dbgRgba(kc[0], kc[1], kc[2], 1)
+          ctx.beginPath(); ctx.arc(ax, ay, 9, 0, 2 * Math.PI); ctx.fill()
+          // A named key needs three characters where the grid needs one, so it gets
+          // a smaller face rather than one that overflows the circle.
+          ctx.font = (a.cap.length > 1 ? "8px" : "10px") + " monospace"
+          ctx.textBaseline = "middle"
+          ctx.fillStyle = root.dbgInk(kc, down ? 1 : 0.8)
+          ctx.fillText(a.cap, ax, ay + 0.5)
+        }
+        ctx.strokeStyle = root.dbgRgba(255, 255, 255, 0.14)
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(6, 22 + root.dbgAuxH - 2)
+        ctx.lineTo(dbgCanvas.width - 6, 22 + root.dbgAuxH - 2)
+        ctx.stroke()
+
         // Vectors radiate from the middle of the grid: they are directions, not
         // places, so a common origin makes them comparable at a glance.
-        var ox = pad + (b.w / 2) * pitch, oy = pad + (b.h / 2) * pitch
+        var ox = pad + (b.w / 2) * pitch, oy = gtop + (b.h / 2) * pitch
         function arrow(sx, sy, vx, vy, col, alpha, len) {
           var m = Math.sqrt(vx * vx + vy * vy)
           if (!(m > 0) || alpha <= 0) return
@@ -1650,6 +1774,7 @@ Item {
           ctx.beginPath(); ctx.arc(ex, ey, 3, 0, 2 * Math.PI); ctx.fill()
         }
 
+        ctx.font = "10px monospace"
         var dm = Math.sqrt(root.dbgDriveX * root.dbgDriveX + root.dbgDriveY * root.dbgDriveY)
         arrow(ox, oy, root.dbgDriveX, root.dbgDriveY,
               root.dbgRgba(64, 255, 128, 1), root.dbgDriveAt > 0 ? 1 : 0, dm * root.dbgScale)
@@ -1683,13 +1808,12 @@ Item {
           var bg = hitT < 0 ? root.dbgKeyIdle
                             : root.dbgMix(root.dbgKeyCold, root.dbgKeyHot,
                                           span > 0 ? (hitT - t0) / span : 1)
-          var px = pad + (p.x - b.x) * pitch, py = pad + (p.y - b.y) * pitch
+          var px = pad + (p.x - b.x) * pitch, py = gtop + (p.y - b.y) * pitch
           ctx.fillStyle = root.dbgRgba(bg[0], bg[1], bg[2], 1)
           ctx.beginPath(); ctx.arc(px, py, 9, 0, 2 * Math.PI); ctx.fill()
-          // Black on the grey for a key this cluster has not touched, so it recedes;
-          // white once struck, over whatever green its timing earned it.
-          ctx.fillStyle = hitT < 0 ? root.dbgRgba(0, 0, 0, 1)
-                                   : root.dbgRgba(255, 255, 255, 1)
+          // White on the grey for a key this cluster has not touched, black once
+          // struck, over whatever green its timing earned it.
+          ctx.fillStyle = root.dbgInk(bg, hitT < 0 ? 0.8 : 1)
           ctx.fillText(root.dbgGlyph(root.mashLabels[key]), px, py + 0.5)
         }
 

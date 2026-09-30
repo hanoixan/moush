@@ -18,14 +18,21 @@ happened yet, the session is *armed but inert*: keys do nothing, no marker.
 ## Modes — Tab cycles, and the choice persists
 
 There is one way to drive the pointer — **mash**, described below — and modes are
-alternative key layouts for it. Two ship, and they are identical until you change
-one: `mash` for the right hand, and `mash-lh` as a starting point for the left.
+alternative key layouts for it. Two ship — `mash` under the right hand and
+`mash-lh` under the left — and they share nothing but their shape:
 
 ```
- 7 8 9 0 -          7 (held) wheel mode     tab  next mode
-Y U I O P [         8 9 0   left/middle/right click
- H J K L ; '        - (held) 1px steps      `    the debug display
-  N M , . /         z       next strategy   5 6 R T F G V B A S D W  inert
+mash                                    mash-lh
+ 7 8 9 0 -                               5 4 3 2
+Y U I O            4x3 grid             W E R T
+ H J K L                                 S D F G
+  N M , .                                 X C V B
+
+8 9 0   left/middle/right click         5 4 3
+7 (held) wheel mode                     6 (held)
+- (held) 1px steps                      2 (held)
+tab next mode   ` overlay   z next strategy       (both)
+6 T G B P ; /  inert                    7 Y H N Q A Z  inert
 ```
 
 Everything not listed passes through, so typing still works.
@@ -136,18 +143,16 @@ tenths rather than key widths wants `mash_gain` scaled to match. Every derived
 quantity — the overlay's extent, the vector lengths, the fitted speed itself —
 is computed from the coordinates actually given.
 
-The defaults are in key widths, quartered, because the real stagger is not
-uniform. The number row sits half a key right of `YUIOP`, and `HJKL` and `NM` are
-a further quarter right again:
+The defaults are in key widths, with each row offset half a key from the one
+above, which is roughly how a staggered keyboard actually sits:
 
 ```
- 7 8 9 0 -      +0.50 keys
-Y U I O P [     +0.00
- H J K L ; '    +0.25
-  N M , . /     +0.75
+Y U I O         +0.0 keys
+ H J K L        +0.5
+  N M , .       +1.0
 ```
 
-Quartering keeps a column step and a row step the same distance, so the grid
+Halving keeps a column step and a row step the same distance, so the grid
 measures the way it feels under the hand rather than the way it is easiest to type
 out. Re-measuring for a differently staggered keyboard — or an ortholinear one,
 where every offset is 0 — is an edit to `keys` and nothing else.
@@ -448,16 +453,51 @@ against, and the legend highlights it. That is a live experiment rather than a
 setting: the next session takes its strategy from `mash_strategy` again.
 
 ```
-- lsq                                    legend, in the colours below
+lmb mmb rmb wheel fine cycle debug strat   every key this mode binds that is
+ 8   9   0    7    -   tab    `     z      not part of the grid; red = down
 
-  7  8  9  0  -                          the grid as it sits under your hand;
- Y  U  I  O  P  [                        struck: white on a grey shaded green
- H  J  K  L  ;  '                        by when in the cluster it was struck;
-  N  M  ,  .  /                          untouched: black on grey, receding
-
+ Y  U  I  O                              the grid as it sits under your hand;
+  H  J  K  L                             struck: black on a green shaded by when
+   N  M  ,  .                            in the cluster it was struck;
+                                         untouched: white on dark grey
         \|/                              vectors, drawn from the grid centre
          *                               because they are directions, not places
+
+- lsq                                    legend, in the colours below
 ```
+
+**The row along the top is everything else the mode binds** — the buttons, the
+wheel and fine modifiers, cycle, the overlay toggle, the strategy key — each under
+the name of the job it does, because which key does what is the whole question a
+remapped mode raises. A key omitted from the mode is omitted from the row, so the
+row depicts the mode in hand rather than a canonical keyboard.
+
+**Red means the key is down.** For the three buttons and the two modifiers that is
+their real held state, not a flash, so a drag or a wheel-hold stays lit for exactly
+as long as the finger does — which is the quickest way to see a button that never
+got its release. The momentary keys have no held state to report and flash for
+`dbgAuxFlashMs` (260ms) instead.
+
+Keeping that honest costs one thing: the overlay normally stops repainting 300ms
+after the last event, and a held key outlasts that, so the repaint timer also stays
+alive while anything is down and takes one more pass after the release to clear the
+red. Without it the red would simply persist, frozen in whichever frame happened to
+be the last one painted.
+
+A key is **white on dark grey until it is struck, then black on its colour** —
+green in the grid, red in the aux row. That rule is what sets the cold end of the
+timing ramp: it used to be a near-black grey, which black text cannot be read on,
+and which also made a cluster's first press hard to tell from a key nobody had
+touched. The ramp now runs from a deep green to a bright one, both light enough to
+carry black text, and a luminance check picks the ink so retuning a colour cannot
+silently produce an unreadable key.
+
+**Tab rebuilds the whole panel.** Both the grid and the aux row are the current
+mode's, so cycling redraws from the new mode's settings once they arrive — which is
+also why the cluster is dropped at the same moment. The overlay is keyed on grid
+*indices*, and every index now means a different key, so carrying the presses over
+would shade the new grid by the old mode's gesture. The event log is the deliberate
+exception: it is a history, and the gap shows up in it as a large delta.
 
 Green is the drive vector actually steering the pointer. Every vector radiates
 from the grid's centre, because a vector here is a direction rather than a place.

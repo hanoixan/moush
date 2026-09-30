@@ -402,7 +402,7 @@ scroll_repeat_ms        = 60,    -- between repeats
 The two ramp timings are in **seconds**, unlike the `_ms` settings elsewhere.
 
 **Struck twice and kept down, a vertical key skips the ramp** and starts at
-`scroll_repeat_scale_ultra` (100) at once, holding there until released — for
+`scroll_repeat_scale_ultra` (1000) at once, holding there until released — for
 crossing a long document in one gesture. Only `I` and `M`: a document is long, not
 wide, so the sideways keys keep their end-of-view double-tap instead.
 

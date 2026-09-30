@@ -127,7 +127,7 @@ Item {
   property real scrollIncreaseTime: 5
   // Double-tapped and held, a vertical key skips the ramp entirely and goes
   // straight to its top speed, for crossing a long document in one gesture.
-  property real scrollRepeatScaleUltra: 100
+  property real scrollRepeatScaleUltra: 1000
   property bool scrollUltra: false
   // Hyprland stops repeating a key as soon as a second bound key is held, and in
   // wheel mode 7 always is, so the repeat has to be generated here and the release

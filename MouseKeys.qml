@@ -1339,6 +1339,16 @@ Item {
     root.warp(root.curX + (dx / d) * px, root.curY + (dy / d) * px)
   }
 
+  // What a press does when there is no gesture to fit it into.
+  function mashLone(name, now) {
+    var dn = root.mashDirs[name]
+    if (!dn) { root.mashNudgeDo(name, now); return }
+    root.moveDir = root.actionDirs[dn]
+    root.collectEdges()
+    root.beginHold("move", dn, now)             // so holding it sweeps
+    root.moveStep(root.moveDir, root.fineHeld ? root.finePx : root.baseStep, false)
+  }
+
   function mashPress(name, now) {
     var pos = root.mashPos(name)
     if (!pos) return
@@ -1409,27 +1419,23 @@ Item {
       // distance in key widths, and feeding that to a formula expecting key
       // widths per second would throw the ball at an arbitrary speed.
       var n = hist.length
-      // The opening press of a cluster: no second point yet, so no direction to
-      // fit. This is where a lone press does its own thing — a direction key
-      // steers, anything else nudges — immediately, rather than waiting out the
-      // cluster to confirm it was alone. A sweep that follows keeps whatever
-      // pixels were already spent, which are lost in it.
-      if (n < 2) {
-        var dn = root.mashDirs[name]
-        if (dn) {
-          root.moveDir = root.actionDirs[dn]
-          root.collectEdges()
-          root.beginHold("move", dn, now)       // so holding it sweeps
-          root.moveStep(root.moveDir, root.fineHeld ? root.finePx : root.baseStep, false)
-        } else {
-          root.mashNudgeDo(name, now)
-        }
-        return
+      // Nothing to fit yet: either this opened the cluster, or it landed on the
+      // same key as last time and so added no displacement to fit against. Both
+      // mean the press stands alone — a direction key steers, anything else
+      // nudges — and it happens now rather than after the cluster has closed.
+      //
+      // The same-key case is why tapping one direction key quickly used to stop
+      // moving. Between fastTapMs and mashClusterMs the presses shared a cluster
+      // without being a double-tap, so the second onward were read as samples of a
+      // point already sampled, a fit over no displacement produced nothing, and
+      // the cursor sat still until the tapping slowed down or sped up.
+      if (n >= 2) {
+        var dx = hist[n - 1].x - hist[n - 2].x, dy = hist[n - 1].y - hist[n - 2].y
+        var m = Math.sqrt(dx * dx + dy * dy)
+        if (m > 0) { ux = dx / m; uy = dy / m }
+        else n = 1                              // no displacement: it stands alone
       }
-      var dx = hist[n - 1].x - hist[n - 2].x, dy = hist[n - 1].y - hist[n - 2].y
-      var m = Math.sqrt(dx * dx + dy * dy)
-      if (!(m > 0)) return
-      ux = dx / m; uy = dy / m
+      if (n < 2) { root.mashLone(name, now); return }
     }
     // Every press moves at least mashStepPx, the way every press in the other
     // keymaps moves at least baseStep. Slow mashing lives entirely here: at a

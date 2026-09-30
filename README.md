@@ -187,6 +187,23 @@ I I fast                      (  +0,-462)   double-tap: skitter
 hold I for 0.9s               (  +0,-500)   accelerating sweep
 ```
 
+**Tapping one of them repeatedly steps every time, at any speed.** A press that
+lands on the same key as the last adds no displacement, so there is nothing for a
+fit to work with, and it is treated as standing alone rather than as a sample of a
+gesture.
+
+```
+gap between presses   300ms  220ms  180ms  150ms | 140ms   60ms
+moved per press         8px    8px    8px    8px |  204px  206px
+                        the step                 | the double-tap skitter
+```
+
+Without that, tapping between `fast_tap_ms` and `mash_cluster_ms` fell in a gap:
+the presses shared a cluster without being a double-tap, so the second onward were
+read as samples of a point already sampled. A fit over no displacement produced
+nothing, and the cursor sat still until the tapping slowed down or sped up — 8px
+per press at 220ms, 1.3px at 150ms, then 206px at 120ms.
+
 They cannot be separately bound as direction keys — Hyprland fires one dispatcher
 per key, and these are already grid keys — so the plugin decides per press. Only
 two cases are settled before the mash machinery sees the press: a repeat, which

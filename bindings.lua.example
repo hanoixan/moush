@@ -111,7 +111,7 @@ MOUSH = {
 
       -- Bound to nothing, so a stray reach does not leak into the focused window.
       -- Caps Lock is by keycode: it emits Multi_key here, so its name never fires.
-      inert = { "7", "Y", "H", "grave", "1" },
+      inert = { "7", "Y", "H", "grave" },
     },
   },
 }

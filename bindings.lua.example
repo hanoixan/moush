@@ -268,95 +268,96 @@ for name, cfg in pairs(MOUSH.modes) do moush_mode(name, cfg) end
 -- ---------------------------------------------------------------------------
 -- Key names, for reference.
 --
--- Two spellings exist and both appear above. A binding is what hl.bind takes,
--- and may carry modifiers: "SUPER + M". A keysym is what Moush asks about when
--- it needs to know a key is still held, and never carries modifiers. They are
--- the same word for almost every key, which is why one setting usually serves
--- both; the exceptions are at the bottom of this table.
+-- The keysym is the name of the key, and is what you write both in a binding
+-- and anywhere Moush has to ask whether a key is still held. A binding may
+-- carry modifiers in front of it -- "SUPER + M" -- and a modifier is written
+-- there by its prefix, which is a different word from the keysym of the key
+-- itself. That is the whole of the third column.
 --
--- Which fields need which:
---   keys, dirs      binding, and keysym for anything named in dirs
---   buttons, wheel  both
---   inert           binding only
---   cycle/debug/strategy, chord_hl_bind   binding only
---   chord_key, chord_mods                 keysym only
+-- Which fields take which:
+--   keys, buttons, wheel, inert      keysym
+--   cycle, debug, strategy           keysym
+--   chord_key, chord_mods            keysym
+--   chord_hl_bind                    keysym, with prefixes
+--   coarse_mod, fine_mod             prefix
 --
--- description              keysym            binding
--- letters                  a .. z            A .. Z      either case
--- digits                   0 .. 9            0 .. 9
--- function keys            F1 .. F12         F1 .. F12
--- space bar                space             space
--- tab                      Tab               Tab
--- enter                    Return            Return
--- backspace                BackSpace         BackSpace
--- escape                   Escape            Escape
--- delete                   Delete            Delete
--- insert                   Insert            Insert
+-- description              keysym            prefix
+-- letters                  a .. z            -        either case in a binding
+-- digits                   0 .. 9            -
+-- function keys            F1 .. F12         -
+-- space bar                space             -
+-- tab                      Tab               -
+-- enter                    Return            -
+-- backspace                BackSpace         -
+-- escape                   Escape            -
+-- delete                   Delete            -
+-- insert                   Insert            -
 --
--- backtick / tilde         grave             grave
--- hyphen / underscore      minus             minus
--- equals / plus            equal             equal
--- left square bracket      bracketleft       bracketleft
--- right square bracket     bracketright      bracketright
--- backslash / pipe         backslash         backslash
--- semicolon / colon        semicolon         semicolon
--- apostrophe / quote       apostrophe        apostrophe
--- comma / less than        comma             comma
--- period / greater than    period            period
--- slash / question         slash             slash
+-- backtick / tilde         grave             -
+-- hyphen / underscore      minus             -
+-- equals / plus            equal             -
+-- left square bracket      bracketleft       -
+-- right square bracket     bracketright      -
+-- backslash / pipe         backslash         -
+-- semicolon / colon        semicolon         -
+-- apostrophe / quote       apostrophe        -
+-- comma / less than        comma             -
+-- period / greater than    period            -
+-- slash / question         slash             -
 --
--- left arrow               Left              Left
--- right arrow              Right             Right
--- up arrow                 Up                Up
--- down arrow               Down              Down
--- home                     Home              Home
--- end                      End               End
--- page up                  Prior             Prior
--- page down                Next              Next
+-- left arrow               Left              -
+-- right arrow              Right             -
+-- up arrow                 Up                -
+-- down arrow               Down              -
+-- home                     Home              -
+-- end                      End               -
+-- page up                  Prior             -
+-- page down                Next              -
 --
--- left shift               Shift_L           Shift_L
--- right shift              Shift_R           Shift_R
--- left control             Control_L         Control_L
--- right control            Control_R         Control_R
--- left alt                 Alt_L             Alt_L
--- right alt                Alt_R             Alt_R
--- left super               Super_L           Super_L
--- right super              Super_R           Super_R
--- menu / context           Menu              Menu
+-- left shift               Shift_L           SHIFT
+-- right shift              Shift_R           SHIFT
+-- left control             Control_L         CTRL
+-- right control            Control_R         CTRL
+-- left alt                 Alt_L             ALT
+-- right alt                Alt_R             ALT
+-- left super               Super_L           SUPER
+-- right super              Super_R           SUPER
+-- menu / context           Menu              -
 --
--- print screen             Print             Print
--- scroll lock              Scroll_Lock       Scroll_Lock
--- pause / break            Pause             Pause
--- num lock                 Num_Lock          Num_Lock
+-- print screen             Print             -
+-- scroll lock              Scroll_Lock       -
+-- pause / break            Pause             -
+-- num lock                 Num_Lock          -
 --
--- keypad divide            KP_Divide         KP_Divide
--- keypad multiply          KP_Multiply       KP_Multiply
--- keypad minus             KP_Subtract       KP_Subtract
--- keypad plus              KP_Add            KP_Add
--- keypad enter             KP_Enter          KP_Enter
--- keypad 0 (num lock on)   KP_0              KP_0
--- keypad 1 .. 9            KP_1 .. KP_9      KP_1 .. KP_9
--- keypad period            KP_Decimal        KP_Decimal
+-- keypad divide            KP_Divide         -
+-- keypad multiply          KP_Multiply       -
+-- keypad minus             KP_Subtract       -
+-- keypad plus              KP_Add            -
+-- keypad enter             KP_Enter          -
+-- keypad 0 (num lock on)   KP_0              -
+-- keypad 1 .. 9            KP_1 .. KP_9      -
+-- keypad period            KP_Decimal        -
 --
--- The shifted name of a key is a different keysym and binds only with the
--- shift held: write comma, not less. Those are exclam at numbersign dollar
--- percent asciicircum ampersand asterisk parenleft parenright underscore plus
--- braceleft braceright bar colon quotedbl less greater question asciitilde.
+-- A prefix has aliases: CTRL and CONTROL are one, ALT and MOD1 are one, and
+-- SUPER, WIN, LOGO and MOD4 are all the same. CAPS is a prefix too, though on
+-- this keyboard that key is Compose rather than a lock.
 --
--- Modifier names, which prefix a binding and are what coarse_mod and fine_mod
--- take, are a third thing again: SHIFT CTRL ALT SUPER. The keysyms above are
--- the physical keys behind them.
+-- The shifted name of a key is a different keysym and binds only with the shift
+-- held: write comma, not less. Those are exclam at numbersign dollar percent
+-- asciicircum ampersand asterisk parenleft parenright underscore plus braceleft
+-- braceright bar colon quotedbl less greater question asciitilde.
 --
--- Where the two spellings differ on this keyboard:
+-- The one key whose binding is not simply its keysym:
 --
---   caps lock              Multi_key         Multi_key  or  code:66
+--   caps lock              Multi_key         bind it as Multi_key or code:66
 --
 -- Omarchy sets kb_options = compose:caps, so that key is Compose, not Caps
 -- Lock. Binding it as Caps_Lock registers and never fires -- measured, six
--- presses, no session -- while Multi_key and code:66 both work. Anything can
--- be bound as code:NN, where NN is the evdev code plus 8, but a keycode cannot
--- be asked about: is_key_down("code:66") answers nothing at all, so a key that
--- has to be polled reads as released the instant it is pressed.
+-- presses, no session -- while Multi_key and code:66 both work. Anything can be
+-- bound as code:NN, where NN is the evdev code plus 8, but a keycode cannot be
+-- asked about: is_key_down("code:66") answers nothing at all, so a key that has
+-- to be polled reads as released the instant it is pressed. That rules a keycode
+-- out for wheel, for buttons, and for anything named in dirs.
 --
 -- Keypad digits are KP_0 .. KP_9 only while num lock is on. With it off they
 -- report as KP_Insert KP_End KP_Down KP_Next KP_Left KP_Begin KP_Right KP_Home

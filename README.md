@@ -417,11 +417,27 @@ both, save, and the next `hyprctl reload` has it; nothing else to restart.
 If the two disagree, the chord still opens a session but Moush is asking about the
 wrong key, so it never sees the chord released and every session latches.
 
-One thing to know if you move it. Twelve of Omarchy's forty-three `Super`
+Two things to know if you move it. Twelve of Omarchy's forty-three `Super`
 bindings do not report a key name, so a combination can look free when it is
 already taken; check with `omarchy menu keybindings --print` rather than by eye.
 And the chord key must not be one of the keys your layout uses in a session, or it
 will click or move while you are trying to exit.
+
+**Caps Lock is free, but has to be bound by keycode.** Omarchy sets
+`kb_options = compose:caps`, so that key emits `Multi_key`, and a binding written
+as `SUPER + Caps_Lock` registers and then never fires -- measured, six presses, no
+session. By keycode it behaves like any other key:
+
+```lua
+chord_key  = { "Caps_Lock", "Multi_key" },
+chord_mods = { "Super_L", "Super_R" },
+...
+hl.bind("SUPER + code:66", hl.dsp.global("moush:toggle"),
+  { submap_universal = true, description = "Moush" })
+```
+
+Tapping it opened and closed a session six times out of six, holding it latched,
+and typing afterwards was unaffected, so the compose mapping costs nothing here.
 
 ## If something is not working
 

@@ -576,3 +576,7 @@ omarchy-shell shell call moush probe ""
 
 If the shell itself gets stuck holding the keyboard, `Ctrl + Alt + Escape` restores
 your normal bindings.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

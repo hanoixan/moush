@@ -108,7 +108,7 @@ reboot. Do not hand-write a udev rule; the packaged one is enough.</p>
 <div class="cmd"><span class="p">$</span> omarchy plugin add https://github.com/hanoixan/moush --enable</div>
 
 <div class="istep">3 &middot; its keys</div>
-<div class="cmd"><span class="p">$</span> echo 'require("omarchy.plugins.moush.implementation")()' &gt;&gt; ~/.config/hypr/bindings.lua</div>
+<div class="cmd"><span class="p">$</span> echo 'require("omarchy.plugins.hanoixan-moush.implementation")()' &gt;&gt; ~/.config/hypr/bindings.lua</div>
 <div class="cmd"><span class="p">$</span> hyprctl reload</div>
 <p class="inote">Moush ships no bindings of its own, so stop after step 2 and it
 installs, enables, and does nothing at all. That one line is the whole of it: every
@@ -322,11 +322,116 @@ layout and default stays inside the plugin where an update can reach it.</p>
 <div class="key r-steer" style="flex:1"><span class="cap">→</span><span class="note alias">= D</span></div>
 </div>
 </div>
+
+<h2>Keymap &mdash; minimal</h2>
+<div class="modename"><span class="n">minimal</span>
+<span class="d">the arrow cluster and three buttons &mdash; nothing to learn</span></div>
+<div class="kb">
+<div class="kbrow">
+<div class="key" style="flex:1"><span class="cap">esc</span></div>
+<div class="kgap" style="flex:1"></div>
+<div class="key r-glob" style="flex:1"><span class="cap">f1</span><span class="note">overlay</span></div>
+<div class="key r-glob" style="flex:1"><span class="cap">f2</span><span class="note">switch layout</span></div>
+<div class="key" style="flex:1"><span class="cap">f3</span></div>
+<div class="key" style="flex:1"><span class="cap">f4</span></div>
+<div class="key" style="flex:1"><span class="cap">f5</span></div>
+<div class="key" style="flex:1"><span class="cap">f6</span></div>
+<div class="key" style="flex:1"><span class="cap">f7</span></div>
+<div class="key" style="flex:1"><span class="cap">f8</span></div>
+<div class="key" style="flex:1"><span class="cap">f9</span></div>
+<div class="key" style="flex:1"><span class="cap">f10</span></div>
+<div class="key" style="flex:1"><span class="cap">f11</span></div>
+<div class="key" style="flex:1"><span class="cap">f12</span></div>
+<div class="kgap" style="flex:3.5"></div>
+</div>
+<div class="kbrow">
+<div class="key" style="flex:1"><span class="cap">`</span></div>
+<div class="key" style="flex:1"><span class="cap">1</span></div>
+<div class="key" style="flex:1"><span class="cap">2</span></div>
+<div class="key" style="flex:1"><span class="cap">3</span></div>
+<div class="key" style="flex:1"><span class="cap">4</span></div>
+<div class="key" style="flex:1"><span class="cap">5</span></div>
+<div class="key" style="flex:1"><span class="cap">6</span></div>
+<div class="key" style="flex:1"><span class="cap">7</span></div>
+<div class="key" style="flex:1"><span class="cap">8</span></div>
+<div class="key" style="flex:1"><span class="cap">9</span></div>
+<div class="key" style="flex:1"><span class="cap">0</span></div>
+<div class="key" style="flex:1"><span class="cap">-</span></div>
+<div class="key" style="flex:1"><span class="cap">=</span></div>
+<div class="key" style="flex:2"><span class="cap">⌫</span></div>
+<div class="kgap" style="flex:3.5"></div>
+</div>
+<div class="kbrow">
+<div class="key r-btn" style="flex:1.5"><span class="cap">Tab</span><span class="note">right click</span></div>
+<div class="key" style="flex:1"><span class="cap">Q</span></div>
+<div class="key" style="flex:1"><span class="cap">W</span></div>
+<div class="key r-btn" style="flex:1"><span class="cap">E</span><span class="note">middle click</span></div>
+<div class="key r-wheel" style="flex:1"><span class="cap">R</span><span class="note">hold: scroll</span></div>
+<div class="key" style="flex:1"><span class="cap">T</span></div>
+<div class="key" style="flex:1"><span class="cap">Y</span></div>
+<div class="key" style="flex:1"><span class="cap">U</span></div>
+<div class="key" style="flex:1"><span class="cap">I</span></div>
+<div class="key" style="flex:1"><span class="cap">O</span></div>
+<div class="key" style="flex:1"><span class="cap">P</span></div>
+<div class="key" style="flex:1"><span class="cap">[</span></div>
+<div class="key" style="flex:1"><span class="cap">]</span></div>
+<div class="key" style="flex:1.5"><span class="cap">\</span></div>
+<div class="kgap" style="flex:3.5"></div>
+</div>
+<div class="kbrow">
+<div class="key" style="flex:1.75"><span class="cap">Caps</span></div>
+<div class="key" style="flex:1"><span class="cap">A</span></div>
+<div class="key" style="flex:1"><span class="cap">S</span></div>
+<div class="key" style="flex:1"><span class="cap">D</span></div>
+<div class="key" style="flex:1"><span class="cap">F</span></div>
+<div class="key" style="flex:1"><span class="cap">G</span></div>
+<div class="key" style="flex:1"><span class="cap">H</span></div>
+<div class="key" style="flex:1"><span class="cap">J</span></div>
+<div class="key" style="flex:1"><span class="cap">K</span></div>
+<div class="key" style="flex:1"><span class="cap">L</span></div>
+<div class="key" style="flex:1"><span class="cap">;</span></div>
+<div class="key" style="flex:1"><span class="cap">&#x27;</span></div>
+<div class="key" style="flex:2.25"><span class="cap">Enter</span></div>
+<div class="kgap" style="flex:3.5"></div>
+</div>
+<div class="kbrow">
+<div class="key r-mod" style="flex:2.25"><span class="cap">Shift</span><span class="note">coarse</span></div>
+<div class="key" style="flex:1"><span class="cap">Z</span></div>
+<div class="key" style="flex:1"><span class="cap">X</span></div>
+<div class="key" style="flex:1"><span class="cap">C</span></div>
+<div class="key" style="flex:1"><span class="cap">V</span></div>
+<div class="key" style="flex:1"><span class="cap">B</span></div>
+<div class="key" style="flex:1"><span class="cap">N</span></div>
+<div class="key" style="flex:1"><span class="cap">M</span></div>
+<div class="key" style="flex:1"><span class="cap">,</span></div>
+<div class="key" style="flex:1"><span class="cap">.</span></div>
+<div class="key" style="flex:1"><span class="cap">/</span></div>
+<div class="key r-mod" style="flex:2.75"><span class="cap">Shift</span><span class="note">coarse</span></div>
+<div class="kgap" style="flex:1.25"></div>
+<div class="key r-steer" style="flex:1"><span class="cap">↑</span></div>
+<div class="kgap" style="flex:1.25"></div>
+</div>
+<div class="kbrow">
+<div class="key r-mod" style="flex:1.25"><span class="cap">Ctrl</span><span class="note">fine</span></div>
+<div class="key r-chord" style="flex:1.25"><span class="cap">Super</span><span class="note">+M exits</span></div>
+<div class="key" style="flex:1.25"><span class="cap">Alt</span></div>
+<div class="key r-btn" style="flex:6.25"><span class="cap">Space</span><span class="note">left click</span></div>
+<div class="key" style="flex:1.25"><span class="cap">Alt</span></div>
+<div class="key r-chord" style="flex:1.25"><span class="cap">Super</span><span class="note">+M exits</span></div>
+<div class="key" style="flex:1.25"><span class="cap">Menu</span></div>
+<div class="key r-mod" style="flex:1.25"><span class="cap">Ctrl</span><span class="note">fine</span></div>
+<div class="kgap" style="flex:0.5"></div>
+<div class="key r-steer" style="flex:1"><span class="cap">←</span></div>
+<div class="key r-steer" style="flex:1"><span class="cap">↓</span></div>
+<div class="key r-steer" style="flex:1"><span class="cap">→</span></div>
+</div>
+</div>
 <div class="legend"><span><i class="sw" style="background:#132a16;border-color:#38703a"></i>steers &mdash; and part of the grid</span><span><i class="sw" style="background:#10242a;border-color:#2b5c66"></i>grid only &mdash; mash across these</span><span><i class="sw" style="background:#2a1a0c;border-color:#6d4520"></i>mouse button</span><span><i class="sw" style="background:#241433;border-color:#5b3a86"></i>hold to scroll</span><span><i class="sw" style="background:#101d33;border-color:#2e4a7a"></i>size modifier</span><span><i class="sw" style="background:#2b2710;border-color:#6d6224"></i>overlay and layout</span><span><i class="sw" style="background:#2d1118;border-color:#79303f"></i>opens a session</span><span><i class="sw" style="background:#0b0c0f;border-color:#1b1d22"></i>swallowed, so a stray reach types nothing</span></div>
 <p class="arrows">The arrow keys are aliases for the four steering keys, so
 <kbd>&larr;</kbd> is the same press as the key marked <span class="ar">&larr;</span>
 &mdash; same step, same sweep, same place in a mash. Turn them off for a layout
-with <code>mouse_arrows = false</code>.</p>
+with <code>mouse_arrows = false</code>, as <span class="ar">minimal</span> does:
+there the arrows <em>are</em> the steering keys, so there is nothing to alias.</p>
 
 
 <h2>Quickstart</h2>

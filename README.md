@@ -67,7 +67,7 @@ before you say yes.
 this step nothing responds:
 
 ```bash
-echo 'require("omarchy.plugins.moush.implementation")()' >> ~/.config/hypr/bindings.lua
+echo 'require("omarchy.plugins.hanoixan-moush.implementation")()' >> ~/.config/hypr/bindings.lua
 hyprctl reload
 ```
 
@@ -79,14 +79,14 @@ Press `Super` + `M` and a red disc should appear.
 
 If you would rather have the configuration notes in front of you,
 `bindings.lua.example` is the same call with the options written out around it, so
-`cat ~/.config/omarchy/plugins/moush/bindings.lua.example >> ~/.config/hypr/bindings.lua`
+`cat ~/.config/omarchy/plugins/hanoixan-moush/bindings.lua.example >> ~/.config/hypr/bindings.lua`
 works just as well.
 
 ### Updating and removing
 
 ```bash
-omarchy plugin update moush        # fast-forwards, revalidates, rolls back if it fails
-omarchy plugin remove moush
+omarchy plugin update hanoixan-moush        # fast-forwards, revalidates, rolls back if it fails
+omarchy plugin remove hanoixan-moush
 ```
 
 An update only touches the plugin, never `~/.config/hypr/bindings.lua`, so the one
@@ -101,10 +101,10 @@ replaces the `omarchy plugin add` step only -- `ydotool` and the binding line ar
 still needed. The folder has to be named for the plugin id, which is `moush`:
 
 ```bash
-git clone https://github.com/hanoixan/moush ~/.config/omarchy/plugins/moush
-omarchy plugin validate ~/.config/omarchy/plugins/moush
+git clone https://github.com/hanoixan/moush ~/.config/omarchy/plugins/hanoixan-moush
+omarchy plugin validate ~/.config/omarchy/plugins/hanoixan-moush
 omarchy-shell shell rescanPlugins
-omarchy plugin enable moush
+omarchy plugin enable hanoixan-moush
 ```
 
 `omarchy plugin update` still works on a hand-cloned copy, since it is an ordinary
@@ -129,23 +129,28 @@ aim with.
 
 ## The keys
 
-Two layouts ship. `mash` sits under the right hand, `mash_lh` under the left. `F2`
-switches between them, and your choice is remembered between sessions and across a
-shell restart.
+Three layouts ship. `mash` sits under the right hand, `mash_lh` under the left, and
+`minimal` is the arrow cluster on its own. `F2` cycles through them in alphabetical
+order, and your choice is remembered between sessions and across a shell restart.
+A fresh install starts on `mash`.
 
 ```
-mash                        mash_lh
+mash                  mash_lh               minimal
 
- 8 9 0 - =                   2 3 4 5 6
-U I O P [     the grid      Q W E R T
-J K L ; '                   A S D F G
- M , . /                     Z X C V
+ 8 9 0 - =             2 3 4 5 6                 up         the grid
+U I O P [             Q W E R T             left down right
+J K L ; '             A S D F G
+ M , . /               Z X C V
 
-space V B     buttons       space B Tab      left, middle, right
-H     hold    scroll        CapsLock hold
+space  V  B           space  1  B           space  E  Tab   buttons: left, middle, right
+H                     Tab                   R               hold to scroll
 ```
 
-Three keys do the same thing in either layout, so they are set once rather than per
+`minimal` exists for anyone who wants the pointer without learning a layout: the
+four arrow keys steer, three keys click, and that is all of it. There is no grid to
+mash across, though a swipe over the four still reads as a direction.
+
+These are the same in all three layouts, so they are set once rather than per
 layout:
 
 ```
@@ -165,7 +170,8 @@ reach does not spill letters into whatever you were writing.
 Eight keys steer. In `mash` they are `I` up, `K` down, `J` left, `L` right, with
 `8` `9` `U` `O` for the four diagonals; in `mash_lh`, `W` `S` `A` `D` and `2` `3`
 `Q` `E`. The rest of the grid has no direction of its own and does nothing when
-tapped alone; those keys exist for mashing.
+tapped alone; those keys exist for mashing. `minimal` is the exception: four keys
+steer and there are no diagonals.
 
 The two lower diagonals are picked for where the fingers fall rather than for where
 the keys sit, so `U` means down-left from a key that is physically up-left. That
@@ -259,7 +265,8 @@ still build on each other, which is what makes a swipe gather speed.
 ## Clicking and dragging
 
 In `mash` the buttons are `space`, `V` and `B` for left, middle and right; in
-`mash_lh`, `space`, `B` and `Tab`. They sit under the hand that is not mashing. A
+`mash_lh`, `space`, `1` and `B`; in `minimal`, `space`, `E` and `Tab`. They sit
+under the hand that is not mashing. A
 button is down while its key is down, so a tap is a click and a hold is a drag.
 Hold `space`, sweep across a line of text, and let go, and the text is selected
 exactly as a mouse would have selected it. Clicking also focuses whatever window
@@ -341,7 +348,7 @@ The defaults live in the plugin. You change them by passing a table to the same
 call that installed it, in `~/.config/hypr/bindings.lua`:
 
 ```lua
-require("omarchy.plugins.moush.implementation")({
+require("omarchy.plugins.hanoixan-moush.implementation")({
   coarse_mod = "ALT",
   idle_ms    = 3000,
 })
@@ -361,7 +368,7 @@ So this moves the scroll key in `mash` and leaves its grid, its directions and i
 buttons exactly as they shipped:
 
 ```lua
-require("omarchy.plugins.moush.implementation")({
+require("omarchy.plugins.hanoixan-moush.implementation")({
   modes = { mash = { wheel = "G" } },
 })
 ```
@@ -404,6 +411,7 @@ own keys, so the two can share nothing at all:
     },
 
     ["mash_lh"] = { ... },
+    ["minimal"] = { ... },
   },
 }
 ```
@@ -430,6 +438,10 @@ bindings: pressing `Left` *is* pressing whichever key `dirs` maps to `left`, wit
 the same step, the same sweep when held, the same place in a mash. Measured, a
 gesture ending on the up key and the same gesture ending on the up arrow roll
 identically.
+
+`minimal` sets it to `false`, because there the arrow keys *are* the steering keys.
+Aliasing them to themselves would bind each one twice at every modifier, and a
+duplicate binding is resolved silently in favour of whichever was declared first.
 
 ### The two modifiers
 
@@ -588,7 +600,7 @@ name.
 You can ask a running session what it thinks is going on:
 
 ```bash
-omarchy-shell shell call moush probe ""
+omarchy-shell shell call hanoixan-moush probe ""
 ```
 
 If the shell itself gets stuck holding the keyboard, `Ctrl + Alt + Escape` restores

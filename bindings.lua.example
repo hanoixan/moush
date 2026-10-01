@@ -9,13 +9,13 @@
 -- The layouts, the bindings and the key-name reference all live in the plugin,
 -- in implementation.lua. This calls it.
 
-require("omarchy.plugins.moush.implementation")()
+require("omarchy.plugins.hanoixan-moush.implementation")()
 
 -- Pass a table to change anything. Top-level keys replace the default outright.
 -- Under `modes`, a name that already exists has only the fields you give it
 -- replaced; a name that does not exist is a new layout and has to be complete.
 --
--- require("omarchy.plugins.moush.implementation")({
+-- require("omarchy.plugins.hanoixan-moush.implementation")({
 --   coarse_mod = "ALT",
 --   idle_ms    = 3000,
 --   modes = {

@@ -1325,7 +1325,9 @@ Item {
   }
 
   // ---- the debug overlay -----------------------------------------------------
-  property bool mashDebug: true
+  // Off on a fresh install: the overlay is a tool, not the product. F1 shows it.
+  // Not persisted, so it is off again after a shell restart.
+  property bool mashDebug: false
   property var dbgHits: []                    // {name, t} of the cluster's presses
   property var dbgStrats: ({})                // name -> {x, y, t}
   property real dbgDriveX: 0

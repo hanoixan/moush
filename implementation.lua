@@ -1,12 +1,12 @@
 -- Moush, the whole of it. Required from your bindings.lua:
 --
---   require("omarchy.plugins.moush.implementation")()
+--   require("omarchy.plugins.hanoixan-moush.implementation")()
 --
 -- Pass a table to change anything. Top-level keys replace the default outright.
 -- Under `modes`, a name that already exists here has only the fields you give it
 -- replaced, so you can retune one layout without restating the rest:
 --
---   require("omarchy.plugins.moush.implementation")({
+--   require("omarchy.plugins.hanoixan-moush.implementation")({
 --     coarse_mod = "ALT",
 --     modes = { mash = { wheel = "G" } },
 --   })
@@ -128,6 +128,30 @@ local DEFAULTS = {
       -- Bound to nothing, so a stray reach does not leak into the focused window.
       -- Caps Lock is by keycode: it emits Multi_key here, so its name never fires.
       inert = { "7", "Y", "H", "grave" },
+    },
+
+    -- The arrow cluster on its own: four keys, no grid to mash across, nothing
+    -- else bound. Steering and clicking only, for anyone who wants the pointer
+    -- without learning a layout. The coordinates are the inverted T as it sits
+    -- on the keyboard, so a swipe across it still reads as a direction.
+    ["minimal"] = {
+      keys = {
+        { "Left", 0, 1 }, { "Up", 1, 0 }, { "Down", 1, 2 }, { "Right", 2, 1 },
+      },
+
+      dirs = { Up = "up", Down = "down", Left = "left", Right = "right" },
+
+      buttons = { lmb = "space", mmb = "E", rmb = "Tab" },
+      wheel   = "R",
+
+      -- The steering keys *are* the arrow keys here, so the aliasing would bind
+      -- each of them twice at every modifier -- 16 duplicate binds, where the
+      -- first declared silently wins. Same behaviour either way; this is the
+      -- honest spelling of it.
+      mouse_arrows = false,
+
+      -- The four keys are the whole layout, so there is nothing to swallow.
+      inert = {},
     },
   },
 }

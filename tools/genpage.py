@@ -76,6 +76,10 @@ def keyboard(mode):
             if name == "":
                 out.append('<div class="kgap" style="flex:%g"></div>' % w); continue
             role, note = r.get(name, (None,None))
+            # On a layout that steers with the arrow keys themselves, the cap and
+            # the direction glyph are the same character. Showing it twice reads
+            # as a rendering fault, so say it once.
+            if note == lab: note = None
             cls = "key" + (" r-"+role if role else "")
             cls_note = "note alias" if (note or "").startswith("= ") else "note"
             sub = '<span class="%s">%s</span>' % (cls_note, html.escape(note)) if note else ""
@@ -311,7 +315,7 @@ reboot. Do not hand-write a udev rule; the packaged one is enough.</p>
 <div class="cmd"><span class="p">$</span> omarchy plugin add https://github.com/hanoixan/moush --enable</div>
 
 <div class="istep">3 &middot; its keys</div>
-<div class="cmd"><span class="p">$</span> echo 'require("omarchy.plugins.moush.implementation")()' &gt;&gt; ~/.config/hypr/bindings.lua</div>
+<div class="cmd"><span class="p">$</span> echo 'require("omarchy.plugins.hanoixan-moush.implementation")()' &gt;&gt; ~/.config/hypr/bindings.lua</div>
 <div class="cmd"><span class="p">$</span> hyprctl reload</div>
 <p class="inote">Moush ships no bindings of its own, so stop after step 2 and it
 installs, enables, and does nothing at all. That one line is the whole of it: every
@@ -327,11 +331,17 @@ layout and default stays inside the plugin where an update can reach it.</p>
 <div class="modename"><span class="n">mash_lh</span>
 <span class="d">the same shape under the left hand &mdash; press F2 to switch</span></div>
 @@KB2@@
+
+<h2>Keymap &mdash; minimal</h2>
+<div class="modename"><span class="n">minimal</span>
+<span class="d">the arrow cluster and three buttons &mdash; nothing to learn</span></div>
+@@KB3@@
 @@LEGEND@@
 <p class="arrows">The arrow keys are aliases for the four steering keys, so
 <kbd>&larr;</kbd> is the same press as the key marked <span class="ar">&larr;</span>
 &mdash; same step, same sweep, same place in a mash. Turn them off for a layout
-with <code>mouse_arrows = false</code>.</p>
+with <code>mouse_arrows = false</code>, as <span class="ar">minimal</span> does:
+there the arrows <em>are</em> the steering keys, so there is nothing to alias.</p>
 
 @@QUICK@@
 
@@ -352,6 +362,7 @@ leg = '<div class="legend">' + "".join(
 out = (doc.replace("@@HERO@@", hero())
           .replace("@@KB1@@", keyboard("mash"))
           .replace("@@KB2@@", keyboard("mash_lh"))
+          .replace("@@KB3@@", keyboard("minimal"))
           .replace("@@LEGEND@@", leg)
           .replace("@@QUICK@@", QUICK))
 open(os.path.join(REPO, "docs", "moush.html"), "w").write(out)

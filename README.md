@@ -202,9 +202,19 @@ after 0.8s   1.0x      still steady
        7.5s  10.0x
 ```
 
-**The modifiers work here too.** Hold Shift and a single press scrolls ten notches
-instead of one, the size the ramp would otherwise take seconds to reach. Hold Ctrl
-and the ramp switches off: every repeat stays one notch for as long as you hold it.
+**The modifiers work here too, and they work while you hold them.** Shift asks
+straight away for the rate the ramp would otherwise take seconds to climb to, and
+Ctrl pins it to the slowest and never climbs. Holding M down for a second and a
+half, from the same line each time:
+
+```
+plain          27 notches
+with Shift    250 notches
+```
+
+Over five seconds, where the plain ramp has time to climb, plain sends 263 and Ctrl
+sends 84. Press or release a modifier part way through and the rate changes at
+once, the same as it does for pointer movement.
 
 For a long document, hold Shift and swipe. Scrolling goes to a hundred times the
 base rate at once and stays there while you keep the last key of the swipe down.

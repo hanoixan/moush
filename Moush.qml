@@ -317,7 +317,6 @@ Item {
   property bool clusterExtent: false          // this swipe has already taken its edge
   property real clusterX: 0                   // where the pointer was when it began
   property real clusterY: 0
-  property bool scrollFine: false             // scrolling without the ramp
   property var scrollDir: [0, 1]              // the direction the current hold scrolls
   property real scrollWant: 0                 // notches this swipe has asked for
   property real scrollSent: 0                 // ...and how many it has actually sent
@@ -459,7 +458,7 @@ Item {
     scrollTimer.stop(); scrollKeyPoll.stop(); dbgTimer.stop()
     root.wheelHeld = false
     root.lastMod = ""; root.coarseDown = false; root.fineDown = false
-    root.clusterExtent = false; root.scrollFine = false
+    root.clusterExtent = false
     root.scrollHoldName = ""; root.scrollUltra = false
     root.ballVX = 0; root.ballVY = 0
     ballTimer.stop()
@@ -525,7 +524,12 @@ Item {
   // Flat while the hold is young, then a straight ramp, then flat at the top.
   function scrollScaleAt(ms) {
     if (root.scrollUltra) return root.scrollRepeatScaleUltra
-    if (root.scrollFine) return root.scrollRepeatScaleMin     // fine never ramps
+    // Read live, so changing your mind part way through takes effect at once, the
+    // way it already does for a sweep. Coarse asks straight away for the rate the
+    // ramp would have taken seconds to climb to; fine pins it to the bottom and
+    // never climbs at all.
+    if (root.liveMod === "f") return root.scrollRepeatScaleMin
+    if (root.liveMod === "c") return root.scrollRepeatScaleMax
     var lo = root.scrollRepeatScaleMin, hi = root.scrollRepeatScaleMax
     var delay = root.scrollIncreaseDelay * 1000, span = root.scrollIncreaseTime * 1000
     if (ms <= delay) return lo
@@ -964,7 +968,7 @@ Item {
     if (root.wheelHeld) {
       root.scrollHoldName = name; root.scrollHoldAt = now
       root.scrollFrac = 0; root.scrollReps = 0; root.scrollDets = 0
-      root.scrollUltra = true; root.scrollFine = false
+      root.scrollUltra = true
       root.scrollDir = dir
       root.scrollRepeat(name, dir, now)
       scrollTimer.interval = root.scrollRepeatMs
@@ -1267,7 +1271,6 @@ Item {
         root.scrollDir = sdir
         root.scrollFrac = 0; root.scrollReps = 0; root.scrollDets = notches
         root.scrollUltra = false
-        root.scrollFine = (mod === "f")
         root.pokeIdle()
 
         // The first press of a swipe has no swipe to read yet, so it scrolls by its

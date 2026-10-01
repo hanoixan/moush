@@ -126,6 +126,9 @@ Item {
   property var mashPos: ({})                  // index -> {x, y}
   property var mashDirs: ({})                 // index -> direction, for lone presses
   property var modeKeys: ({})
+  property bool mouseArrows: true             // arrow keys alias the steering keys
+  readonly property var arrowSym: ({ up: "Up", down: "Down",
+                                     left: "Left", right: "Right" })
   property string coarseMod: "SHIFT"          // shown in the overlay; the binding
   property string fineMod: "CTRL"             // itself lives in bindings.lua
   // The physical keys behind a modifier name, for asking whether one is still down.
@@ -221,6 +224,7 @@ Item {
     }
     if (k === "chord_key") { if (v !== "") root.chordKey = v.split(","); return }
     if (k === "chord_mods") { root.chordMods = v === "" ? [] : v.split(","); return }
+    if (k === "mouse_arrows") { root.mouseArrows = (v === "true"); return }
     if (k === "coarse_mod") { root.coarseMod = v; return }
     if (k === "fine_mod") { root.fineMod = v; return }
     if (k === "lmb" || k === "mmb" || k === "rmb" || k === "wheel"
@@ -1639,7 +1643,10 @@ Item {
       var key = ""
       for (var idx in root.mashDirs)
         if (root.mashDirs[idx] === names[i]) key = root.mashLabels[idx] || ""
-      terms.push('"' + names[i] + '=" .. tostring(' + (key === "" ? "false" : 'd("' + key + '")') + ')')
+      var test = key === "" ? "false" : 'd("' + key + '")'
+      if (key !== "" && root.mouseArrows && root.arrowSym[names[i]])
+        test = '(' + test + ' or d("' + root.arrowSym[names[i]] + '"))'
+      terms.push('"' + names[i] + '=" .. tostring(' + test + ')')
     }
     // The modifiers ride along in the same question. Asking separately meant two
     // processes competing every 70ms, and the sustain answer arriving late enough
@@ -1703,16 +1710,33 @@ Item {
     }
   }
 
-  function keyDownExpr(label) {
-    if (!label || label === "") return 'return "false"'
-    return 'local s = "' + label + '" '
-         + 'for _, n in ipairs({ s, s:lower(), s:sub(1,1):upper() .. s:sub(2):lower() }) do '
-         + 'if hl.is_key_down(n) then return "true" end end return "false"'
+  // Every name that counts as this action still being held: the key itself, and
+  // the arrow aliasing it when mouse_arrows is on. A press carries no record of
+  // which one produced it, so a question about one has to accept either.
+  function pollNames(gridAction) {
+    var lab = root.gridLabel(gridAction)
+    if (!lab) return []
+    var out = [lab]
+    var dn = root.gridDir(gridAction)
+    if (root.mouseArrows && dn && root.arrowSym[dn]) out.push(root.arrowSym[dn])
+    return out
+  }
+
+  function keyDownExpr(labels) {
+    var list = (typeof labels === "string") ? (labels === "" ? [] : [labels]) : (labels || [])
+    if (list.length === 0) return 'return "false"'
+    var tests = []
+    for (var i = 0; i < list.length; i++)
+      tests.push('d("' + String(list[i]).replace(/"/g, '') + '")')
+    return 'local function d(s) for _, n in ipairs({ s, s:lower(), '
+         + 's:sub(1,1):upper() .. s:sub(2):lower() }) do '
+         + 'if hl.is_key_down(n) then return true end end return false end '
+         + 'return tostring(' + tests.join(" or ") + ')'
   }
 
   Process {
     id: scrollKeyProbe
-    command: ["hyprctl", "repl", root.keyDownExpr(root.gridLabel(root.scrollHoldName))]
+    command: ["hyprctl", "repl", root.keyDownExpr(root.pollNames(root.scrollHoldName))]
     stdout: StdioCollector {
       onStreamFinished: {
         // Asking Hyprland takes about 150ms, which is longer than the gap between

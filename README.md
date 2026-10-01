@@ -346,6 +346,7 @@ MOUSH = {
 
       buttons = { lmb = "space", mmb = "V", rmb = "B" },
       wheel   = "H",        -- hold to scroll
+      mouse_arrows = true,  -- arrow keys alias the four steering keys
 
       -- bound so they do nothing, rather than typing into your window
       inert = { "N", "7", "Y", "G", "backslash", "bracketright" },
@@ -371,6 +372,13 @@ offset at all. Larger or smaller numbers work too, as long as you are consistent
 
 Only keys in `dirs` steer on their own. Leave a key out of `dirs` and it is purely
 part of the grid.
+
+**The arrow keys stand in for the four cardinal steering keys**, unless a layout
+sets `mouse_arrows = false`. They are aliases rather than a second set of
+bindings: pressing `Left` *is* pressing whichever key `dirs` maps to `left`, with
+the same step, the same sweep when held, the same place in a mash. Measured, a
+gesture ending on the up key and the same gesture ending on the up arrow roll
+identically.
 
 ### The two modifiers
 

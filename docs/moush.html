@@ -50,6 +50,7 @@ kbd{background:#1a1d24;border:1px solid #30343d;border-bottom-width:2px;border-r
 .r-grid .cap{color:var(--cyan)} .r-grid .note{color:#4c8d94}
 .r-steer{background:#132a16;border-color:#38703a}
 .r-steer .cap{color:var(--green)} .r-steer .note{font-size:15px;color:var(--green)}
+.r-steer .note.alias{font-size:9px;color:#4f8a52;letter-spacing:.04em}
 .r-btn{background:#2a1a0c;border-color:#6d4520}
 .r-btn .cap{color:var(--orange)} .r-btn .note{color:#a06734}
 .r-wheel{background:#241433;border-color:#5b3a86}
@@ -62,6 +63,9 @@ kbd{background:#1a1d24;border:1px solid #30343d;border-bottom-width:2px;border-r
 .r-chord .cap{color:#e06c80} .r-chord .note{color:#a85160}
 .r-inert{background:#0b0c0f;border-color:#1b1d22}
 .r-inert .cap{color:#3a3c42} .r-inert .note{color:#303238}
+.arrows{font-size:12px;color:var(--dim);margin:11px 0 0}
+.arrows .ar{color:var(--green)}
+.arrows code{color:#9aa39a}
 .legend{display:flex;flex-wrap:wrap;gap:8px 20px;margin:12px 0 0;font-size:11px}
 .legend span{display:flex;align-items:center;gap:7px;color:var(--dim)}
 .sw{width:13px;height:13px;border-radius:3px;border:1px solid}
@@ -101,6 +105,7 @@ installs, enables, and does nothing at all.</p>
 <div class="key" style="flex:1"><span class="cap">f10</span></div>
 <div class="key" style="flex:1"><span class="cap">f11</span></div>
 <div class="key" style="flex:1"><span class="cap">f12</span></div>
+<div class="kgap" style="flex:3.5"></div>
 </div>
 <div class="kbrow">
 <div class="key" style="flex:1"><span class="cap">`</span></div>
@@ -117,6 +122,7 @@ installs, enables, and does nothing at all.</p>
 <div class="key r-grid" style="flex:1"><span class="cap">-</span><span class="note">grid</span></div>
 <div class="key r-grid" style="flex:1"><span class="cap">=</span><span class="note">grid</span></div>
 <div class="key" style="flex:2"><span class="cap">⌫</span></div>
+<div class="kgap" style="flex:3.5"></div>
 </div>
 <div class="kbrow">
 <div class="key" style="flex:1.5"><span class="cap">Tab</span></div>
@@ -133,6 +139,7 @@ installs, enables, and does nothing at all.</p>
 <div class="key r-grid" style="flex:1"><span class="cap">[</span><span class="note">grid</span></div>
 <div class="key r-inert" style="flex:1"><span class="cap">]</span><span class="note">blocked</span></div>
 <div class="key r-inert" style="flex:1.5"><span class="cap">\</span><span class="note">blocked</span></div>
+<div class="kgap" style="flex:3.5"></div>
 </div>
 <div class="kbrow">
 <div class="key" style="flex:1.75"><span class="cap">Caps</span></div>
@@ -148,6 +155,7 @@ installs, enables, and does nothing at all.</p>
 <div class="key r-grid" style="flex:1"><span class="cap">;</span><span class="note">grid</span></div>
 <div class="key r-grid" style="flex:1"><span class="cap">&#x27;</span><span class="note">grid</span></div>
 <div class="key" style="flex:2.25"><span class="cap">Enter</span></div>
+<div class="kgap" style="flex:3.5"></div>
 </div>
 <div class="kbrow">
 <div class="key r-mod" style="flex:2.25"><span class="cap">Shift</span><span class="note">coarse</span></div>
@@ -162,6 +170,9 @@ installs, enables, and does nothing at all.</p>
 <div class="key r-grid" style="flex:1"><span class="cap">.</span><span class="note">grid</span></div>
 <div class="key r-grid" style="flex:1"><span class="cap">/</span><span class="note">grid</span></div>
 <div class="key r-mod" style="flex:2.75"><span class="cap">Shift</span><span class="note">coarse</span></div>
+<div class="kgap" style="flex:1.25"></div>
+<div class="key r-steer" style="flex:1"><span class="cap">↑</span><span class="note alias">= I</span></div>
+<div class="kgap" style="flex:1.25"></div>
 </div>
 <div class="kbrow">
 <div class="key r-mod" style="flex:1.25"><span class="cap">Ctrl</span><span class="note">fine</span></div>
@@ -172,6 +183,10 @@ installs, enables, and does nothing at all.</p>
 <div class="key r-chord" style="flex:1.25"><span class="cap">Super</span><span class="note">+M exits</span></div>
 <div class="key" style="flex:1.25"><span class="cap">Menu</span></div>
 <div class="key r-mod" style="flex:1.25"><span class="cap">Ctrl</span><span class="note">fine</span></div>
+<div class="kgap" style="flex:0.5"></div>
+<div class="key r-steer" style="flex:1"><span class="cap">←</span><span class="note alias">= J</span></div>
+<div class="key r-steer" style="flex:1"><span class="cap">↓</span><span class="note alias">= K</span></div>
+<div class="key r-steer" style="flex:1"><span class="cap">→</span><span class="note alias">= L</span></div>
 </div>
 </div>
 
@@ -194,6 +209,7 @@ installs, enables, and does nothing at all.</p>
 <div class="key" style="flex:1"><span class="cap">f10</span></div>
 <div class="key" style="flex:1"><span class="cap">f11</span></div>
 <div class="key" style="flex:1"><span class="cap">f12</span></div>
+<div class="kgap" style="flex:3.5"></div>
 </div>
 <div class="kbrow">
 <div class="key r-inert" style="flex:1"><span class="cap">`</span><span class="note">blocked</span></div>
@@ -210,6 +226,7 @@ installs, enables, and does nothing at all.</p>
 <div class="key" style="flex:1"><span class="cap">-</span></div>
 <div class="key" style="flex:1"><span class="cap">=</span></div>
 <div class="key" style="flex:2"><span class="cap">⌫</span></div>
+<div class="kgap" style="flex:3.5"></div>
 </div>
 <div class="kbrow">
 <div class="key r-wheel" style="flex:1.5"><span class="cap">Tab</span><span class="note">hold: scroll</span></div>
@@ -226,6 +243,7 @@ installs, enables, and does nothing at all.</p>
 <div class="key" style="flex:1"><span class="cap">[</span></div>
 <div class="key" style="flex:1"><span class="cap">]</span></div>
 <div class="key" style="flex:1.5"><span class="cap">\</span></div>
+<div class="kgap" style="flex:3.5"></div>
 </div>
 <div class="kbrow">
 <div class="key" style="flex:1.75"><span class="cap">Caps</span></div>
@@ -241,6 +259,7 @@ installs, enables, and does nothing at all.</p>
 <div class="key" style="flex:1"><span class="cap">;</span></div>
 <div class="key" style="flex:1"><span class="cap">&#x27;</span></div>
 <div class="key" style="flex:2.25"><span class="cap">Enter</span></div>
+<div class="kgap" style="flex:3.5"></div>
 </div>
 <div class="kbrow">
 <div class="key r-mod" style="flex:2.25"><span class="cap">Shift</span><span class="note">coarse</span></div>
@@ -255,6 +274,9 @@ installs, enables, and does nothing at all.</p>
 <div class="key" style="flex:1"><span class="cap">.</span></div>
 <div class="key" style="flex:1"><span class="cap">/</span></div>
 <div class="key r-mod" style="flex:2.75"><span class="cap">Shift</span><span class="note">coarse</span></div>
+<div class="kgap" style="flex:1.25"></div>
+<div class="key r-steer" style="flex:1"><span class="cap">↑</span><span class="note alias">= W</span></div>
+<div class="kgap" style="flex:1.25"></div>
 </div>
 <div class="kbrow">
 <div class="key r-mod" style="flex:1.25"><span class="cap">Ctrl</span><span class="note">fine</span></div>
@@ -265,9 +287,17 @@ installs, enables, and does nothing at all.</p>
 <div class="key r-chord" style="flex:1.25"><span class="cap">Super</span><span class="note">+M exits</span></div>
 <div class="key" style="flex:1.25"><span class="cap">Menu</span></div>
 <div class="key r-mod" style="flex:1.25"><span class="cap">Ctrl</span><span class="note">fine</span></div>
+<div class="kgap" style="flex:0.5"></div>
+<div class="key r-steer" style="flex:1"><span class="cap">←</span><span class="note alias">= A</span></div>
+<div class="key r-steer" style="flex:1"><span class="cap">↓</span><span class="note alias">= S</span></div>
+<div class="key r-steer" style="flex:1"><span class="cap">→</span><span class="note alias">= D</span></div>
 </div>
 </div>
 <div class="legend"><span><i class="sw" style="background:#132a16;border-color:#38703a"></i>steers &mdash; and part of the grid</span><span><i class="sw" style="background:#10242a;border-color:#2b5c66"></i>grid only &mdash; mash across these</span><span><i class="sw" style="background:#2a1a0c;border-color:#6d4520"></i>mouse button</span><span><i class="sw" style="background:#241433;border-color:#5b3a86"></i>hold to scroll</span><span><i class="sw" style="background:#101d33;border-color:#2e4a7a"></i>size modifier</span><span><i class="sw" style="background:#2b2710;border-color:#6d6224"></i>overlay and layout</span><span><i class="sw" style="background:#2d1118;border-color:#79303f"></i>opens a session</span><span><i class="sw" style="background:#0b0c0f;border-color:#1b1d22"></i>swallowed, so a stray reach types nothing</span></div>
+<p class="arrows">The arrow keys are aliases for the four steering keys, so
+<kbd>&larr;</kbd> is the same press as the key marked <span class="ar">&larr;</span>
+&mdash; same step, same sweep, same place in a mash. Turn them off for a layout
+with <code>mouse_arrows = false</code>.</p>
 
 
 <h2>Quickstart</h2>

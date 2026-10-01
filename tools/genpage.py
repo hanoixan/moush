@@ -12,20 +12,28 @@ def inert(mode):
     return re.findall(r'"([^"]+)"', m.group(1) if m else "")
 
 # ---- keyboard geometry: US ANSI, widths in key units -----------------------
+# Widths in key units. Every row totals 18.5 so the columns line up, with the
+# arrow cluster tucked into the right-hand 3.5 the way a compact board does it.
 ROWS = [
- [("Escape","esc",1.0),("","gap",1.0)] + [("F%d"%i,"f%d"%i,1.0) for i in range(1,13)],
+ [("Escape","esc",1.0),("","gap",1.0)] + [("F%d"%i,"f%d"%i,1.0) for i in range(1,13)] +
+   [("","gap",3.5)],
  [("grave","`",1.0)] + [(str(d),str(d),1.0) for d in [1,2,3,4,5,6,7,8,9,0]] +
-   [("minus","-",1.0),("equal","=",1.0),("BackSpace","⌫",2.0)],
+   [("minus","-",1.0),("equal","=",1.0),("BackSpace","⌫",2.0),("","gap",3.5)],
  [("Tab","Tab",1.5)] + [(c,c,1.0) for c in "QWERTYUIOP"] +
-   [("bracketleft","[",1.0),("bracketright","]",1.0),("backslash","\\",1.5)],
+   [("bracketleft","[",1.0),("bracketright","]",1.0),("backslash","\\",1.5),
+    ("","gap",3.5)],
  [("Caps","Caps",1.75)] + [(c,c,1.0) for c in "ASDFGHJKL"] +
-   [("semicolon",";",1.0),("apostrophe","'",1.0),("Return","Enter",2.25)],
+   [("semicolon",";",1.0),("apostrophe","'",1.0),("Return","Enter",2.25),
+    ("","gap",3.5)],
  [("Shift_L","Shift",2.25)] + [(c,c,1.0) for c in "ZXCVBNM"] +
-   [("comma",",",1.0),("period",".",1.0),("slash","/",1.0),("Shift_R","Shift",2.75)],
+   [("comma",",",1.0),("period",".",1.0),("slash","/",1.0),("Shift_R","Shift",2.75),
+    ("","gap",1.25),("Up","↑",1.0),("","gap",1.25)],
  [("Control_L","Ctrl",1.25),("Super_L","Super",1.25),("Alt_L","Alt",1.25),
   ("space","Space",6.25),("Alt_R","Alt",1.25),("Super_R","Super",1.25),
-  ("Menu","Menu",1.25),("Control_R","Ctrl",1.25)],
+  ("Menu","Menu",1.25),("Control_R","Ctrl",1.25),("","gap",0.5),
+  ("Left","←",1.0),("Down","↓",1.0),("Right","→",1.0)],
 ]
+ARROW_KEY = {"up":"Up","down":"Down","left":"Left","right":"Right"}
 ARROW = {"up":"↑","down":"↓","left":"←","right":"→",
          "upleft":"↖","upright":"↗","downleft":"↙","downright":"↘"}
 
@@ -48,6 +56,9 @@ def roles_for(mode):
     r[d["wheel"]] = ("wheel","hold: scroll")
     r[d["debug"]] = ("glob","overlay")
     r[d["cycle"]] = ("glob","switch layout")
+    if d.get("mouse_arrows") == "true":
+        for k, dn in dirs.items():
+            if dn in ARROW_KEY: r[ARROW_KEY[dn]] = ("steer", "= " + k)
     for k in inert(mode): r[k] = ("inert","blocked")
     for k in ("Shift_L","Shift_R"): r[k] = ("mod","coarse")
     for k in ("Control_L","Control_R"): r[k] = ("mod","fine")
@@ -64,7 +75,8 @@ def keyboard(mode):
                 out.append('<div class="kgap" style="flex:%g"></div>' % w); continue
             role, note = r.get(name, (None,None))
             cls = "key" + (" r-"+role if role else "")
-            sub = '<span class="note">%s</span>' % html.escape(note) if note else ""
+            cls_note = "note alias" if (note or "").startswith("= ") else "note"
+            sub = '<span class="%s">%s</span>' % (cls_note, html.escape(note)) if note else ""
             out.append('<div class="%s" style="flex:%g"><span class="cap">%s</span>%s</div>'
                        % (cls, w, html.escape(lab), sub))
         out.append('</div>')
@@ -239,6 +251,7 @@ kbd{background:#1a1d24;border:1px solid #30343d;border-bottom-width:2px;border-r
 .r-grid .cap{color:var(--cyan)} .r-grid .note{color:#4c8d94}
 .r-steer{background:#132a16;border-color:#38703a}
 .r-steer .cap{color:var(--green)} .r-steer .note{font-size:15px;color:var(--green)}
+.r-steer .note.alias{font-size:9px;color:#4f8a52;letter-spacing:.04em}
 .r-btn{background:#2a1a0c;border-color:#6d4520}
 .r-btn .cap{color:var(--orange)} .r-btn .note{color:#a06734}
 .r-wheel{background:#241433;border-color:#5b3a86}
@@ -251,6 +264,9 @@ kbd{background:#1a1d24;border:1px solid #30343d;border-bottom-width:2px;border-r
 .r-chord .cap{color:#e06c80} .r-chord .note{color:#a85160}
 .r-inert{background:#0b0c0f;border-color:#1b1d22}
 .r-inert .cap{color:#3a3c42} .r-inert .note{color:#303238}
+.arrows{font-size:12px;color:var(--dim);margin:11px 0 0}
+.arrows .ar{color:var(--green)}
+.arrows code{color:#9aa39a}
 .legend{display:flex;flex-wrap:wrap;gap:8px 20px;margin:12px 0 0;font-size:11px}
 .legend span{display:flex;align-items:center;gap:7px;color:var(--dim)}
 .sw{width:13px;height:13px;border-radius:3px;border:1px solid}
@@ -281,6 +297,10 @@ installs, enables, and does nothing at all.</p>
 <span class="d">the same shape under the left hand &mdash; press F2 to switch</span></div>
 @@KB2@@
 @@LEGEND@@
+<p class="arrows">The arrow keys are aliases for the four steering keys, so
+<kbd>&larr;</kbd> is the same press as the key marked <span class="ar">&larr;</span>
+&mdash; same step, same sweep, same place in a mash. Turn them off for a layout
+with <code>mouse_arrows = false</code>.</p>
 
 @@QUICK@@
 

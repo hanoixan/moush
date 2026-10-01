@@ -2,8 +2,9 @@
 
 Move, click, drag and scroll the mouse pointer without touching a mouse.
 
-Moush is a plugin for [Omarchy](https://omarchy.org). Hold `Super + M` and your
-keyboard becomes the pointer until you let it go.
+Moush is a plugin for [Omarchy](https://omarchy.org). Click `Super + M` and your
+keyboard becomes the pointer until you stop using it. Long-hold `Super + M` to stay
+in Moush mode until you click it again.
 
 ## Why it exists
 

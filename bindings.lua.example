@@ -106,8 +106,8 @@ MOUSH = {
       -- wheel, buttons and anything in dirs are asked about while held, so they
       -- need a real keysym -- is_key_down knows nothing about "code:NN".
 
-      buttons = { lmb = "space", mmb = "B", rmb = "Tab" },
-      wheel    = "code:66",  -- held: the whole mode scrolls
+      buttons = { lmb = "space", mmb = "1", rmb = "B" },
+      wheel    = "Tab",  -- held: the whole mode scrolls
 
       -- Bound to nothing, so a stray reach does not leak into the focused window.
       -- Caps Lock is by keycode: it emits Multi_key here, so its name never fires.

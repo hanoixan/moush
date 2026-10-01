@@ -952,6 +952,7 @@ Item {
   function mashLone(name, mod, now) {
     var dn = root.gridDir(name)
     if (!dn) return
+    root.ballStop()                           // obey the key, not the leftovers
     root.moveDir = root.actionDirs[dn]
     root.collectEdges()
     root.beginHold("move", dn, now)           // so holding it sweeps
@@ -965,8 +966,7 @@ Item {
     root.pokeIdle()
     // The jump replaces the roll rather than adding to it: whatever the swipe had
     // already thrown would otherwise carry the pointer past the edge it just took.
-    root.ballVX = 0; root.ballVY = 0
-    ballTimer.stop()
+    root.ballStop()
     if (root.wheelHeld) {
       root.scrollHoldName = name; root.scrollHoldAt = now
       root.scrollFrac = 0; root.scrollReps = 0; root.scrollDets = 0
@@ -994,7 +994,18 @@ Item {
   // doing. Without this the key that starts a scroll joins the cluster the pointer
   // was moving in, so it is read as a swipe and scrolls along that stale direction
   // rather than its own -- which looks like one direction working and not the other.
+  function ballStop() {
+    root.ballVX = 0; root.ballVY = 0
+    root.scrollAcc = 0
+    ballTimer.stop()
+  }
+
   function clusterReset() {
+    // A gesture that is over takes its momentum with it. The next one sets the
+    // pointer's direction outright rather than being added to what is still
+    // rolling, which otherwise dragged a new swipe towards the old one and left a
+    // direction key fighting the leftovers of the last mash.
+    root.ballStop()
     root.mashTrail = []
     root.dbgStrats = ({}); root.dbgHits = []
     root.dbgDriveAt = 0; root.dbgDriveX = 0; root.dbgDriveY = 0
@@ -1011,17 +1022,7 @@ Item {
     if (!pos) return false
     // A gap ends the gesture. Everything the old cluster left behind goes with it,
     // including what the overlay is drawing: it shows one cluster at a time.
-    if (now - root.mashLastAt > root.mashClusterMs) {
-      root.mashTrail = []
-      root.dbgStrats = ({}); root.dbgHits = []
-      root.dbgDriveAt = 0; root.dbgDriveX = 0; root.dbgDriveY = 0
-      root.dbgOverCap = false; root.dbgDriveSpeed = 0
-      root.clusterN = 0
-      root.clusterExtent = false
-      root.scrollWant = 0; root.scrollSent = 0
-      // Where the swipe started, before its first press moved anything.
-      root.clusterX = root.curX; root.clusterY = root.curY
-    }
+    if (now - root.mashLastAt > root.mashClusterMs) root.clusterReset()
     root.clusterN += 1
     root.mashLastAt = now
     root.dbgLogEvent(root.gridLabel(name), now, true)

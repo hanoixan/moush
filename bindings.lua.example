@@ -3,7 +3,7 @@
 -- session right then and latches until you hit SUPER + M again.
 --
 -- Everything the plugin knows about keys lives here. Each mode is a submap and a
--- key layout; TAB moves between them and the choice persists. Tunables sit at the
+-- key layout; the cycle key moves between them and the choice persists. Tunables sit at the
 -- top level and any mode may override one by naming it.
 MOUSH = {
   -- The chord that opens a session. The chord_hl_bind used with the bind near the 
@@ -16,9 +16,6 @@ MOUSH = {
   chord_mods = { "Super_L", "Super_R" },
   chord_key  = { "m", "M" },
   chord_hl_bind = "SUPER + M",
-  --Alternative, use Super+CapsLock
-  --chord_key  = {"Caps_Lock", "Multi_key"},
-  --chord_hl_bind = "SUPER + code:66",
 
   -- ---- timing ------------------------------------------------------------
   carry_ms    = 175,   -- press a direction this soon after another to keep its speed
@@ -36,7 +33,7 @@ MOUSH = {
   strategy = "F3",       -- next strategy
 
   -- ---- the trackball -----------------------------------------------------
-  mash_gain    = 0.25,     -- impulse per (unit/s)^3, in the coordinate space above
+  mash_gain    = 0.25,   -- impulse per (unit/s)^3 in each mode's coordinate space
   mash_vmax    = 2000,   -- px/s ceiling, and so the longest throw: vmax/3 pixels
   mash_samples = 4,      -- presses a fit may see
   mash_strategy = "lsq",
@@ -44,8 +41,8 @@ MOUSH = {
 
   -- ---- scrolling, while the wheel key is held -----------------------------
   scroll_repeat_scale_min   = 1,      -- detents per repeat to begin with
-  scroll_repeat_scale_max   = 10,     -- and once the ramp has run out
-  scroll_repeat_scale_ultra = 100,    -- double-tapped and held: straight to here
+  scroll_repeat_scale_max   = 10,     -- once the ramp runs out, and what a coarse press asks for
+  scroll_repeat_scale_ultra = 100,    -- a coarse swipe asks for this at once
   scroll_increase_delay     = 1.5,    -- seconds flat before the ramp starts
   scroll_increase_time      = 5,      -- seconds the ramp takes
   scroll_repeat_ms          = 60,     -- between repeats
@@ -68,7 +65,9 @@ MOUSH = {
         ["8"] = "upleft", ["9"] = "upright", U = "downleft", O = "downright",
       },
 
-      -- Rule: dirs must be a subset of keys, but buttons and wheel cannot exist in keys
+      -- Rule: dirs must be a subset of keys; buttons and wheel must not be in keys.
+      -- wheel, buttons and anything in dirs are asked about while held, so they
+      -- need a real keysym -- is_key_down knows nothing about "code:NN".
 
       buttons = { lmb = "space", mmb = "V", rmb = "B" },
       wheel    = "H",        -- held: the whole mode scrolls
@@ -95,7 +94,9 @@ MOUSH = {
         ["2"] = "upleft", ["3"] = "upright", Q = "downleft", E = "downright",
       },
 
-      -- Rule: dirs must be a subset of keys, but buttons and wheel cannot exist in keys
+      -- Rule: dirs must be a subset of keys; buttons and wheel must not be in keys.
+      -- wheel, buttons and anything in dirs are asked about while held, so they
+      -- need a real keysym -- is_key_down knows nothing about "code:NN".
 
       buttons = { lmb = "space", mmb = "B", rmb = "Tab" },
       wheel    = "code:66",  -- held: the whole mode scrolls

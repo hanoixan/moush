@@ -68,21 +68,29 @@ aim with.
 
 ## The keys
 
-Two layouts ship. `mash` sits under the right hand, `mash-lh` under the left. `Tab`
-switches between them, and your choice is remembered between sessions and across
-a shell restart.
+Two layouts ship. `mash` sits under the right hand, `mash_lh` under the left. `F2`
+switches between them, and your choice is remembered between sessions and across a
+shell restart.
 
 ```
-mash                                   mash-lh
+mash                        mash_lh
 
- 7 8 9 0 -                             2 3 4 5 6
-Y U I O           the grid             W E R T
- H J K L                                S D F G
-  N M , .                                X C V B
+ 8 9 0 - =                   2 3 4 5 6
+U I O P [     the grid      Q W E R T
+J K L ; '                   A S D F G
+ M , . /                     Z X C V
 
-8 9 0    left, middle, right button     5 4 3
-7  hold  scroll instead of move         6  hold
-` shows or hides the display          Tab switches layout
+space V B     buttons       space B Tab      left, middle, right
+H     hold    scroll        CapsLock hold
+```
+
+Three keys do the same thing in either layout, so they are set once rather than per
+layout:
+
+```
+F1   show or hide the display
+F2   switch layout
+F3   next strategy
 
 Shift  hold  bigger:  32px a tap, 4x sweep speed, and a swipe goes to the next edge
 Ctrl   hold  smaller:  1px a tap, an eighth the sweep speed, and a shorter roll
@@ -94,9 +102,10 @@ reach does not spill letters into whatever you were writing.
 
 ## Moving the pointer
 
-Eight keys steer. In `mash` they are `I` up, `M` down, `J` left, `K` right, and
-`U` `O` `N` `,` for the four diagonals. The rest of the grid has no direction of
-its own and does nothing when tapped alone; those keys exist for mashing.
+Eight keys steer. In `mash` they are `I` up, `K` down, `J` left, `L` right, with
+`8` `9` `U` `O` for the four diagonals; in `mash_lh`, `W` `S` `A` `D` and `2` `3`
+`Q` `E`. The rest of the grid has no direction of its own and does nothing when
+tapped alone; those keys exist for mashing.
 
 **One tap is a small step.** Eight pixels, or six on each axis for a diagonal.
 
@@ -124,14 +133,15 @@ so you can steer a sweep instead of restarting it.
 
 **Hold Shift and swipe to jump to the next edge.** Not a step and not a roll: the
 pointer goes straight to the nearest window edge in that direction, however far
-away. Shift with `J K` jumps right, with `M I` jumps up, with `O Y` jumps left.
+away. Shift with `J K` jumps right, with `M I` jumps up, with `L J` jumps left.
 
 The direction is the swipe's own, so this does not depend on any key meaning an
-arrow. Shift with `Y O` jumps right too, because `Y` to `O` points right. Any two
-keys that describe the direction you want will do.
+arrow. Shift with `U O` jumps right too, because `U` to `O` points right, even
+though neither is a direction key. Any two keys that describe the direction you
+want will do.
 
 One jump per swipe, however many keys you cross: Shift with `J K`, `J K L` and
-`J K L ,` all land in the same place. To jump again, pause and swipe again, and it
+`J K L ;` all land in the same place. To jump again, pause and swipe again, and it
 carries on to the next edge each time until it runs out of screen.
 
 Because a modifier says what you mean, nothing you do with the keys alone can
@@ -147,7 +157,7 @@ works the same whichever Hyprland layout you use.
 
 The grid is the part that is unlike other keyboard mouse tools. Instead of one key
 per direction, you run your fingers across a block of keys, and the pointer rolls
-the way your hand went. Mash `Y U I O` left to right and it rolls right. Mash
+the way your hand went. Mash `U I O P` left to right and it rolls right. Mash
 `I K ,` downward and it rolls down. It reads the direction from the order you hit
 the keys, so no single key means anything on its own.
 
@@ -161,9 +171,9 @@ two                53px     149px     325px
 three              53px     262px     388px
 four              101px     372px     443px
 
-                 measured at mash_gain 1.0 and mash_vmax 1000; both have
-                 since changed, so treat these as the shape rather than the
-                 current figures
+                 measured at mash_gain 1.0 and mash_vmax 1000, so read the
+                 shape rather than the figures: distance grows with both how
+                 far the hand went and how fast
 ```
 
 So a short, unhurried swipe nudges the pointer a little way and a long, quick one
@@ -175,20 +185,28 @@ Keys struck more than about a fifth of a second apart are treated as separate ta
 rather than one gesture, which is what lets tapping and mashing share the same keys
 without getting in each other's way.
 
+**A new gesture starts from rest.** Whatever is still rolling stops the moment the
+next one begins, so a fresh mash sets the direction outright instead of being
+dragged towards the last one, and a direction key moves where you pointed it rather
+than fighting the leftovers. Within one gesture nothing changes: successive presses
+still build on each other, which is what makes a swipe gather speed.
+
 ## Clicking and dragging
 
-`8` `9` `0` are the left, middle and right buttons. A button is down while its key
-is down, so a tap is a click and a hold is a drag. Hold `8`, sweep across a line of
-text, and let go, and the text is selected exactly as a mouse would have selected
-it. Clicking also focuses whatever window the pointer is over.
+In `mash` the buttons are `space`, `V` and `B` for left, middle and right; in
+`mash_lh`, `space`, `B` and `Tab`. They sit under the hand that is not mashing. A
+button is down while its key is down, so a tap is a click and a hold is a drag.
+Hold `space`, sweep across a line of text, and let go, and the text is selected
+exactly as a mouse would have selected it. Clicking also focuses whatever window
+the pointer is over.
 
 Modifiers reach the application. Hold `Shift` and click, and the click arrives as a
 shift-click, extending a selection rather than starting a new one.
 
 ## Scrolling
 
-Hold `7` and the same direction keys scroll instead of moving the pointer. The
-pointer stays where it is.
+Hold the wheel key -- `H` in `mash` -- and the same direction keys scroll instead
+of moving the pointer. The pointer stays where it is.
 
 Keep the key down and the scrolling accelerates: steady for the first second and a
 half, then climbing over the next five seconds to ten times the starting rate,
@@ -226,7 +244,7 @@ passing over a sideways key on the way up does not push back against you.
 
 ## The display
 
-Backtick shows or hides a panel in the top left. It is there to make the layout
+`F1` shows or hides a panel in the top left. It is there to make the layout
 legible while you are learning it, or after you have rearranged the keys.
 
 The top row shows every key the layout binds that is not part of the grid, each
@@ -237,7 +255,7 @@ cyan once that passes `mash_vmax`**, which is then named beside it:
 
 ```
 drive:lsq   137 px/s                    within the ceiling, arrow green
-drive:lsq  4200 px/s   at vmax 3000     past it, arrow cyan
+drive:lsq  4200 px/s   at vmax 2000     past it, arrow cyan
 ```
 
 That is the point beyond which swiping harder changes nothing, so between them
@@ -250,7 +268,7 @@ the gesture you just made. An arrow shows the direction the roll was read as, an
 log along the bottom lists recent keys with the gap between them, and the impulse
 each one applied.
 
-Press `Tab` and the whole panel redraws for the other layout.
+Press `F2` and the whole panel redraws for the other layout.
 
 ## Making it yours
 
@@ -265,43 +283,51 @@ MOUSH = {
   coarse_mod = "SHIFT",   -- hold for bigger
   fine_mod   = "CTRL",    -- hold for smaller
 
+  -- Not part of a layout, so set once rather than in each one.
+  cycle    = "F2",        -- next layout
+  debug    = "F1",        -- show or hide the display
+  strategy = "F3",        -- next strategy
+
   modes = {
     mash = {
       keys = {
         -- key, then where it sits: x to the right, y downward
-        { "Y", 0.0, 1 }, { "U", 1.0, 1 }, { "I", 2.0, 1 }, { "O", 3.0, 1 },
-        { "H", 0.5, 2 }, { "J", 1.5, 2 }, { "K", 2.5, 2 }, { "L", 3.5, 2 },
-        { "N", 1.0, 3 }, { "M", 2.0, 3 }, { "comma", 3.0, 3 }, { "period", 4.0, 3 },
+        { "8", 0.5, 0 }, { "9", 1.5, 0 }, { "0", 2.5, 0 }, { "minus", 3.5, 0 }, { "equal", 4.5, 0 },
+        { "U", 0.0, 2 }, { "I", 1.0, 2 }, { "O", 2.0, 2 }, { "P", 3.0, 2 }, { "bracketleft", 4.0, 2 },
+        { "J", 0.0, 4 }, { "K", 1.0, 4 }, { "L", 2.0, 4 }, { "semicolon", 3.0, 4 }, { "apostrophe", 4.0, 4 },
+        { "M", 0.5, 6 }, { "comma", 1.5, 6 }, { "period", 2.5, 6 }, { "slash", 3.5, 6 },
       },
 
       -- which of those also steer when tapped on their own
       dirs = {
-        I = "up", M = "down", J = "left", K = "right",
-        U = "upleft", O = "upright", N = "downleft", comma = "downright",
+        I = "up", K = "down", J = "left", L = "right",
+        ["8"] = "upleft", ["9"] = "upright", U = "downleft", O = "downright",
       },
 
-      buttons = { lmb = "8", mmb = "9", rmb = "0" },
-      wheel   = "7",        -- hold to scroll
-      cycle   = "TAB",      -- next layout
-      debug   = "grave",    -- show or hide the display
+      buttons = { lmb = "space", mmb = "V", rmb = "B" },
+      wheel   = "H",        -- hold to scroll
 
       -- bound so they do nothing, rather than typing into your window
-      inert = { "6", "T", "G", "B", "P", "semicolon", "slash" },
+      inert = { "N", "7", "Y", "G", "backslash", "bracketright" },
     },
 
-    ["mash-lh"] = { ... },
+    ["mash_lh"] = { ... },
   },
 }
 ```
+
+`dirs` must name keys that are in `keys`. `buttons` and `wheel` must not be, since
+a key cannot both be a grid position and do something else -- bind it twice and the
+grid wins, silently.
 
 ### The grid
 
 The numbers after each key say where it sits. The only rule is that x grows to the
 right and y grows downward, matching the screen. Beyond that the units are yours:
-the shipped layout counts in key widths, with each row set half a key right of the
-one above, which is roughly how a staggered keyboard feels under the hand. An
-ortholinear keyboard would use whole numbers with no offset. Larger or smaller
-numbers work too, as long as you are consistent.
+the shipped layouts count in key widths, with the number and bottom rows set half a
+key across from the two in the middle, which is close enough to the real stagger to
+feel right under the hand. An ortholinear keyboard would use whole numbers with no
+offset at all. Larger or smaller numbers work too, as long as you are consistent.
 
 Only keys in `dirs` steer on their own. Leave a key out of `dirs` and it is purely
 part of the grid.
@@ -329,13 +355,13 @@ Nothing else is affected.
 
 ### Adding a layout
 
-Add another entry under `modes`. `Tab` cycles through them in alphabetical order.
+Add another entry under `modes`. `F2` cycles through them in alphabetical order.
 
 ### How mashing feels
 
 ```lua
-mash_gain    = 0.66,   -- how hard each key press shoves the pointer
-mash_vmax    = 3500,   -- its top speed, which sets the longest roll
+mash_gain    = 0.25,   -- how hard each key press shoves the pointer
+mash_vmax    = 2000,   -- its top speed, which sets the longest roll
 mash_samples = 4,      -- how many recent presses the direction is read from
 ```
 
@@ -358,14 +384,14 @@ gain    slow     medium   fast     spread
  0.05     16px     41px     84px   5.2x   too short to cross a screen
 ```
 
-`1.0` is what ships, because it answers to how fast you swipe while still crossing
-a useful distance at speed. Higher values trade that away: by `20` every swipe is
-past the cap before you have finished it, so they all travel the same distance and
-swiping harder changes nothing. Lower values keep more of the range but ask for a
-faster hand to cross the screen.
+Those figures were taken at `mash_vmax` 1000; the shape is what matters rather than
+the exact pixels. The point is that a high gain throws the whole range above the
+cap, where swiping harder changes nothing, and a low one keeps the range underneath
+it where speed comes through.
 
-`mash_vmax` is the ceiling itself, and so the longest possible roll. Raise it along
-with the gain if you want the fast end to reach further.
+`mash_vmax` is the ceiling itself, and so the longest possible roll: a press cannot
+carry further than roughly `mash_vmax / 3` pixels. Raise it along with the gain if
+you want the fast end to reach further.
 
 ### How scrolling feels
 
@@ -394,28 +420,26 @@ by accident.
 
 ### The entry chord
 
-`Super + M` is two lines in `bindings.lua`, and both have to move together. The
-binding is near the bottom of the block:
+`Super + M` is three settings at the top of the table, and they have to agree:
 
 ```lua
-hl.bind("SUPER + B", hl.dsp.global("moush:toggle"),
-  { submap_universal = true, description = "Moush" })
+chord_mods    = { "Super_L", "Super_R" },
+chord_key     = { "m", "M" },
+chord_hl_bind = "SUPER + M",
 ```
 
-and the same keys appear at the top as X keysyms, which is how Moush tells a tap
-from a hold -- it asks whether the chord is still down:
-
-```lua
-chord_key  = { "b", "B" },
-chord_mods = { "Super_L", "Super_R" },
-```
+`chord_hl_bind` is what Hyprland acts on, handed straight to the binding at the
+bottom of the block. The other two are the same keys written as X keysyms, which is
+how Moush tells a tap from a hold: it asks whether the chord is still down, and
+Hyprland will not report a release for this kind of binding.
 
 Either list may hold several syms and any one counts, which is how both Super keys
-and the shifted letter are covered. Set `chord_mods` to `{}` for a bare key. Edit
-both, save, and the next `hyprctl reload` has it; nothing else to restart.
+and the shifted letter are covered. Set `chord_mods` to `{}` for a bare key. Edit,
+save, and the next `hyprctl reload` has it; nothing else to restart.
 
-If the two disagree, the chord still opens a session but Moush is asking about the
-wrong key, so it never sees the chord released and every session latches.
+If the keysyms disagree with the binding, the chord still opens a session but Moush
+is asking about a key that is never down, so it never sees the chord released and
+every session latches.
 
 Two things to know if you move it. Twelve of Omarchy's forty-three `Super`
 bindings do not report a key name, so a combination can look free when it is
@@ -429,15 +453,25 @@ as `SUPER + Caps_Lock` registers and then never fires -- measured, six presses, 
 session. By keycode it behaves like any other key:
 
 ```lua
-chord_key  = { "Caps_Lock", "Multi_key" },
-chord_mods = { "Super_L", "Super_R" },
-...
-hl.bind("SUPER + code:66", hl.dsp.global("moush:toggle"),
-  { submap_universal = true, description = "Moush" })
+chord_mods    = { "Super_L", "Super_R" },
+chord_key     = { "Caps_Lock", "Multi_key" },
+chord_hl_bind = "SUPER + code:66",
 ```
 
 Tapping it opened and closed a session six times out of six, holding it latched,
 and typing afterwards was unaffected, so the compose mapping costs nothing here.
+
+### Where a keycode works, and where it does not
+
+`code:NN` binds like any other key, so it is fine for `inert`, for `cycle`, `debug`
+and `strategy`, and for a grid position in `keys`.
+
+It is **not** fine for `wheel`, for `buttons`, or for any key named in `dirs`.
+Those are the ones Moush has to ask about while they are held, because Hyprland
+reports no release for them, and the question only takes a keysym:
+`hl.is_key_down("code:66")` answers nothing at all, so the key reads as released
+the instant it is pressed. A `wheel` set to a keycode turns scroll mode off again
+within a tenth of a second.
 
 ## If something is not working
 

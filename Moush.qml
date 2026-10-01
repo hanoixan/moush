@@ -88,7 +88,7 @@ Item {
   readonly property int landMs: 60            // ...then for the geometry to arrive
   readonly property int armPollMs: 60         // chord release, while arming
   readonly property int longPressMs: 500      // chord held this long latches
-  readonly property int idleMs: 2000          // unlatched session dies after this
+  property int idleMs: 1500                   // unlatched session dies after this
   readonly property int hintMs: 900           // mode name shown this long
   readonly property real markerSize: 28
   readonly property int keysArmMs: 25         // ask before a hold would lapse
@@ -245,6 +245,7 @@ Item {
     var n = parseFloat(v)
     if (!(n > 0)) return
     if (k === "carry_ms") root.carryMs = n
+    else if (k === "idle_ms") root.idleMs = n
     else if (k === "mash_gain") root.mashGain = n
     else if (k === "mash_vmax") root.mashVMax = n
     else if (k === "mash_samples") root.mashSamples = n
@@ -351,7 +352,7 @@ Item {
       + " gain=" + root.mashGain + " vmax=" + root.mashVMax + " samples=" + root.mashSamples
       + " strategy=" + root.mashStrategy
       + " cur=" + Math.round(root.curX) + "," + Math.round(root.curY)
-      + " idle=" + idleTimer.running + " moving=" + motionTimer.running
+      + " idleMs=" + root.idleMs + " idle=" + idleTimer.running + " moving=" + motionTimer.running
       + " held=" + root.holdConfirmed + " holdH=" + root.holdH.toFixed(2)
       + " edges=" + root.edgesX.length + "/" + root.edgesY.length
       + " cluster=" + root.clusterN + " win=" + root.mashTrail.length

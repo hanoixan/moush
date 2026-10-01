@@ -56,7 +56,7 @@ session lasts:
 
 | | starts | ends |
 |---|---|---|
-| **Tap it** | when you let go | on its own, after two seconds of no input |
+| **Tap it** | when you let go | on its own, after `idle_ms` with no input |
 | **Hold it** for half a second | right then, before you let go | when you press `Super + M` again |
 
 Tap it for a quick correction and forget about it. Hold it when you are going to be
@@ -414,6 +414,9 @@ milliseconds.
 
 `carry_ms` is how long you have, after releasing one direction, to press another
 and keep the speed you had built up.
+
+`idle_ms` is how long a tapped session survives with nothing pressed. It ships at
+1500. A session opened by holding the chord is latched and ignores it entirely.
 
 What holds a swipe together is the gap between its presses: leave more than about a
 fifth of a second and it becomes two gestures rather than one. That single rule

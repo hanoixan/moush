@@ -19,6 +19,7 @@ MOUSH = {
 
   -- ---- timing ------------------------------------------------------------
   carry_ms    = 175,   -- press a direction this soon after another to keep its speed
+  idle_ms     = 1500,  -- a tapped session ends after this long with no input
 
   -- Held while you press a grid key. Coarse means "bigger": a single press moves
   -- further, a swipe goes all the way to the next edge. Fine means "smaller".
@@ -126,7 +127,7 @@ function MOUSH_SETTINGS(mode)
   local out = {}
   local function put(k, v) out[#out + 1] = k .. "=" .. tostring(v == nil and "" or v) end
 
-  for _, k in ipairs({ "carry_ms", "coarse_mod", "fine_mod", "mash_gain", "mash_vmax",
+  for _, k in ipairs({ "carry_ms", "idle_ms", "coarse_mod", "fine_mod", "mash_gain", "mash_vmax",
                        "mash_samples",
                        "scroll_repeat_scale_min", "scroll_repeat_scale_max",
                        "scroll_repeat_scale_ultra", "scroll_increase_delay",

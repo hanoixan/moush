@@ -126,8 +126,8 @@ QUICK = """
 <div class="cols">
 <section>
 <h3>1 &middot; Turn it on</h3>
-<p><b>Tap <kbd>Super</kbd>+<kbd>M</kbd></b> and the session ends by itself after two
-seconds of no input &mdash; good for one correction. <b>Hold it half a second</b> and the
+<p><b>Tap <kbd>Super</kbd>+<kbd>M</kbd></b> and the session ends by itself after a
+second and a half of no input &mdash; good for one correction. <b>Hold it half a second</b> and the
 session latches until you press <kbd>Super</kbd>+<kbd>M</kbd> again.</p>
 <p>A translucent red disc shows the pointer, because Hyprland hides the real cursor
 the moment you touch a key.</p>

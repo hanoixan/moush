@@ -15,6 +15,14 @@ MOUSH = {
   coarse_mod  = "SHIFT",
   fine_mod    = "CTRL",
 
+  -- The chord that opens a session. The bind near the bottom of this file is what
+  -- Hyprland acts on; these are the same keys written as X keysyms, which Moush
+  -- needs in order to tell a tap from a hold by asking whether the chord is still
+  -- down. Change them together. Either list may hold several syms and any one
+  -- counts, which is how both Super keys and the shifted M are covered.
+  chord_key  = { "m", "M" },
+  chord_mods = { "Super_L", "Super_R" },
+
   -- ---- the trackball -----------------------------------------------------
   mash_gain    = 0.5,     -- impulse per (unit/s)^3, in the coordinate space above
   mash_vmax    = 3500,   -- px/s ceiling, and so the longest throw: vmax/3 pixels
@@ -132,6 +140,8 @@ function MOUSH_SETTINGS(mode)
   put("lmb", b.lmb); put("mmb", b.mmb); put("rmb", b.rmb)
   put("wheel", md.wheel)
   put("cycle", md.cycle); put("debug", md.debug); put("strategy", md.strategy)
+  put("chord_key", table.concat(m.chord_key or {}, ","))
+  put("chord_mods", table.concat(m.chord_mods or {}, ","))
   return table.concat(out, " ")
 end
 

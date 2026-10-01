@@ -394,15 +394,28 @@ by accident.
 
 ### The entry chord
 
-`Super + M` is set by an ordinary binding at the top of the block. Moush also needs
-to know which keys that chord uses, which lives in `~/.config/omarchy/shell.json`:
+`Super + M` is two lines in `bindings.lua`, and both have to move together. The
+binding is near the bottom of the block:
 
-```json
-{ "id": "moush", "chordKey": ["m", "M"], "chordMods": ["Super_L", "Super_R"] }
+```lua
+hl.bind("SUPER + B", hl.dsp.global("moush:toggle"),
+  { submap_universal = true, description = "Moush" })
 ```
 
-Moush uses these to tell a tap from a hold, so keep them in step with the
-binding if you change it.
+and the same keys appear at the top as X keysyms, which is how Moush tells a tap
+from a hold -- it asks whether the chord is still down:
+
+```lua
+chord_key  = { "b", "B" },
+chord_mods = { "Super_L", "Super_R" },
+```
+
+Either list may hold several syms and any one counts, which is how both Super keys
+and the shifted letter are covered. Set `chord_mods` to `{}` for a bare key. Edit
+both, save, and the next `hyprctl reload` has it; nothing else to restart.
+
+If the two disagree, the chord still opens a session but Moush is asking about the
+wrong key, so it never sees the chord released and every session latches.
 
 One thing to know if you move it. Twelve of Omarchy's forty-three `Super`
 bindings do not report a key name, so a combination can look free when it is

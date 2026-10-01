@@ -219,6 +219,8 @@ Item {
       }
       return
     }
+    if (k === "chord_key") { if (v !== "") root.chordKey = v.split(","); return }
+    if (k === "chord_mods") { root.chordMods = v === "" ? [] : v.split(","); return }
     if (k === "coarse_mod") { root.coarseMod = v; return }
     if (k === "fine_mod") { root.fineMod = v; return }
     if (k === "lmb" || k === "mmb" || k === "rmb" || k === "wheel"
@@ -1841,8 +1843,11 @@ Item {
   // The chord's release has to be polled too, which means its keysyms are needed
   // even though Hyprland owns the bind. Either list may hold several syms — any one
   // counts, which is how Super_L/Super_R and the shifted "M" are covered.
-  readonly property var chordKey: ["m", "M"]
-  readonly property var chordMods: ["Super_L", "Super_R"]
+  // Defaults only; bindings.lua is the authority and replaces these as soon as the
+  // settings arrive, which is why they are fetched at startup and not only when a
+  // session opens -- the chord has to be known before the first one.
+  property var chordKey: ["m", "M"]
+  property var chordMods: ["Super_L", "Super_R"]
   readonly property string chordExpr: {
     function any(syms) {
       var parts = []
@@ -1867,6 +1872,8 @@ Item {
     id: settings
     command: ["hyprctl", "repl", 'return MOUSH_SETTINGS("' + root.mode + '")']
     stdout: StdioCollector { onStreamFinished: root.onSettings(text) }
+    // Once at startup, so the chord keysyms are known before the first chord.
+    Component.onCompleted: running = true
   }
 
   Process {

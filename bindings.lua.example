@@ -29,6 +29,12 @@ MOUSH = {
   coarse_mod  = "SHIFT",
   fine_mod    = "CTRL",
 
+  -- Not part of a layout: these do the same thing whichever one is active, so they
+  -- are declared once here. A mode may still name its own to override.
+  cycle    = "F2",       -- next mode
+  debug    = "F1",       -- the overlay
+  strategy = "F3",       -- next strategy
+
   -- ---- the trackball -----------------------------------------------------
   mash_gain    = 0.25,     -- impulse per (unit/s)^3, in the coordinate space above
   mash_vmax    = 2000,   -- px/s ceiling, and so the longest throw: vmax/3 pixels
@@ -51,9 +57,9 @@ MOUSH = {
         -- and y downward; mash_gain is what scales it to pixels. These are in key
         -- widths, with the rows staggered as the keyboard actually is.
         { "8", 0.5, 0 }, { "9", 1.5, 0 }, { "0", 2.5, 0 }, { "minus", 3.5, 0 }, { "equal", 4.5, 0 },
-        { "U", 0.0, 2 }, { "I", 1.0, 2 }, { "O", 2.0, 2 }, { "P", 3.0, 2 }, { "bracketleft", 4.0, 2 }, { "bracketright", 5.0, 2 },
-        { "J", 0.5, 4 }, { "K", 1.5, 4 }, { "L", 2.5, 4 }, { "semicolon", 3.5, 4 }, { "apostrophe", 4.5, 4 },
-        { "M", 1.0, 6 }, { "comma", 2.0, 6 }, { "period", 3.0, 6 }, { "slash", 4.0, 6 },
+        { "U", 0.0, 2 }, { "I", 1.0, 2 }, { "O", 2.0, 2 }, { "P", 3.0, 2 }, { "bracketleft", 4.0, 2 },
+        { "J", 0.0, 4 }, { "K", 1.0, 4 }, { "L", 2.0, 4 }, { "semicolon", 3.0, 4 }, { "apostrophe", 4.0, 4 },
+        { "M", 0.5, 6 }, { "comma", 1.5, 6 }, { "period", 2.5, 6 }, { "slash", 3.5, 6 },
       },
 
       -- Struck alone, these steer instead of contributing to a sweep.
@@ -62,14 +68,13 @@ MOUSH = {
         ["8"] = "upleft", ["9"] = "upright", U = "downleft", O = "downright",
       },
 
+      -- Rule: dirs must be a subset of keys, but buttons and wheel cannot exist in keys
+
       buttons = { lmb = "space", mmb = "V", rmb = "B" },
       wheel    = "H",        -- held: the whole mode scrolls
-      cycle    = "TAB",      -- next mode
-      debug    = "grave",    -- the overlay
-      strategy = "Z",        -- next strategy
 
       -- Bound to nothing, so a stray reach does not leak into the focused window.
-      inert = { "7", "Y", "G", "backslash" },
+      inert = { "N", "7", "Y", "G", "backslash", "bracketright" },
     },
     -- The same grid shape as mash, moved under the left hand rather than
     -- mirrored: the directional cluster still sits on the middle-finger column,
@@ -80,25 +85,24 @@ MOUSH = {
         -- the origin instead of U.
         { "2", 0.5, 0 }, { "3", 1.5, 0 }, { "4", 2.5, 0 }, { "5", 3.5, 0 }, { "6", 4.5, 0 },
         { "Q", 0.0, 2 }, { "W", 1.0, 2 }, { "E", 2.0, 2 }, { "R", 3.0, 2 }, { "T", 4.0, 2 },
-        { "A", 0.5, 4 }, { "S", 1.5, 4 }, { "D", 2.5, 4 }, { "F", 3.5, 4 },
-        { "X", 2.0, 6 }, { "C", 3.0, 6 }, { "V", 4.0, 6 },
+        { "A", 0.0, 4 }, { "S", 1.0, 4 }, { "D", 2.0, 4 }, { "F", 3.0, 4 }, { "G", 4.0, 4 },
+        { "Z", 0.5, 6 }, { "X", 1.5, 6 }, { "C", 2.5, 6 }, { "V", 3.5, 6 },
       },
 
       -- Struck alone, these steer instead of contributing to a sweep.
       dirs = {
-        E = "up", D = "down", S = "left", F = "right",
-        ["3"] = "upleft", ["4"] = "upright", W = "downleft", R = "downright",
+        W = "up", S = "down", A = "left", D = "right",
+        ["2"] = "upleft", ["3"] = "upright", Q = "downleft", E = "downright",
       },
 
-      buttons = { lmb = "space", mmb = "N", rmb = "B" },
-      wheel    = "G",        -- held: the whole mode scrolls
-      cycle    = "TAB",      -- next mode
-      debug    = "grave",    -- the overlay
-      strategy = "Z",        -- next strategy
+      -- Rule: dirs must be a subset of keys, but buttons and wheel cannot exist in keys
+
+      buttons = { lmb = "space", mmb = "B", rmb = "Tab" },
+      wheel    = "code:66",  -- held: the whole mode scrolls
 
       -- Bound to nothing, so a stray reach does not leak into the focused window.
       -- Caps Lock is by keycode: it emits Multi_key here, so its name never fires.
-      inert = { "7", "Y", "H", "code:66" },
+      inert = { "7", "Y", "H", "grave", "1" },
     },
   },
 }
@@ -149,7 +153,7 @@ function MOUSH_SETTINGS(mode)
   local b = md.buttons or {}
   put("lmb", b.lmb); put("mmb", b.mmb); put("rmb", b.rmb)
   put("wheel", md.wheel)
-  put("cycle", md.cycle); put("debug", md.debug); put("strategy", md.strategy)
+  put("cycle", g("cycle")); put("debug", g("debug")); put("strategy", g("strategy"))
   put("chord_key", table.concat(m.chord_key or {}, ","))
   put("chord_mods", table.concat(m.chord_mods or {}, ","))
   return table.concat(out, " ")
@@ -237,9 +241,9 @@ local function moush_mode(name, cfg)
     moush_bind(b.mmb, hl.dsp.global("moush:mmb"), {})
     moush_bind(b.rmb, hl.dsp.global("moush:rmb"), {})
     moush_bind(cfg.wheel, hl.dsp.global("moush:wheel"), {})
-    moush_bind(cfg.cycle, hl.dsp.global("moush:cycle"), {})
-    moush_bind(cfg.debug, hl.dsp.global("moush:debug"), {})
-    moush_bind(cfg.strategy, hl.dsp.global("moush:strategy"), {})
+    moush_bind(cfg.cycle or MOUSH.cycle, hl.dsp.global("moush:cycle"), {})
+    moush_bind(cfg.debug or MOUSH.debug, hl.dsp.global("moush:debug"), {})
+    moush_bind(cfg.strategy or MOUSH.strategy, hl.dsp.global("moush:strategy"), {})
 
     moush_bind_mod(MOUSH.coarse_mod or "SHIFT", "coarse")
     moush_bind_mod(MOUSH.fine_mod or "CTRL", "fine")

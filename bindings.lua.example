@@ -264,3 +264,101 @@ local function moush_mode(name, cfg)
 end
 
 for name, cfg in pairs(MOUSH.modes) do moush_mode(name, cfg) end
+
+-- ---------------------------------------------------------------------------
+-- Key names, for reference.
+--
+-- Two spellings exist and both appear above. A binding is what hl.bind takes,
+-- and may carry modifiers: "SUPER + M". A keysym is what Moush asks about when
+-- it needs to know a key is still held, and never carries modifiers. They are
+-- the same word for almost every key, which is why one setting usually serves
+-- both; the exceptions are at the bottom of this table.
+--
+-- Which fields need which:
+--   keys, dirs      binding, and keysym for anything named in dirs
+--   buttons, wheel  both
+--   inert           binding only
+--   cycle/debug/strategy, chord_hl_bind   binding only
+--   chord_key, chord_mods                 keysym only
+--
+-- description              keysym            binding
+-- letters                  a .. z            A .. Z      either case
+-- digits                   0 .. 9            0 .. 9
+-- function keys            F1 .. F12         F1 .. F12
+-- space bar                space             space
+-- tab                      Tab               Tab
+-- enter                    Return            Return
+-- backspace                BackSpace         BackSpace
+-- escape                   Escape            Escape
+-- delete                   Delete            Delete
+-- insert                   Insert            Insert
+--
+-- backtick / tilde         grave             grave
+-- hyphen / underscore      minus             minus
+-- equals / plus            equal             equal
+-- left square bracket      bracketleft       bracketleft
+-- right square bracket     bracketright      bracketright
+-- backslash / pipe         backslash         backslash
+-- semicolon / colon        semicolon         semicolon
+-- apostrophe / quote       apostrophe        apostrophe
+-- comma / less than        comma             comma
+-- period / greater than    period            period
+-- slash / question         slash             slash
+--
+-- left arrow               Left              Left
+-- right arrow              Right             Right
+-- up arrow                 Up                Up
+-- down arrow               Down              Down
+-- home                     Home              Home
+-- end                      End               End
+-- page up                  Prior             Prior
+-- page down                Next              Next
+--
+-- left shift               Shift_L           Shift_L
+-- right shift              Shift_R           Shift_R
+-- left control             Control_L         Control_L
+-- right control            Control_R         Control_R
+-- left alt                 Alt_L             Alt_L
+-- right alt                Alt_R             Alt_R
+-- left super               Super_L           Super_L
+-- right super              Super_R           Super_R
+-- menu / context           Menu              Menu
+--
+-- print screen             Print             Print
+-- scroll lock              Scroll_Lock       Scroll_Lock
+-- pause / break            Pause             Pause
+-- num lock                 Num_Lock          Num_Lock
+--
+-- keypad divide            KP_Divide         KP_Divide
+-- keypad multiply          KP_Multiply       KP_Multiply
+-- keypad minus             KP_Subtract       KP_Subtract
+-- keypad plus              KP_Add            KP_Add
+-- keypad enter             KP_Enter          KP_Enter
+-- keypad 0 (num lock on)   KP_0              KP_0
+-- keypad 1 .. 9            KP_1 .. KP_9      KP_1 .. KP_9
+-- keypad period            KP_Decimal        KP_Decimal
+--
+-- The shifted name of a key is a different keysym and binds only with the
+-- shift held: write comma, not less. Those are exclam at numbersign dollar
+-- percent asciicircum ampersand asterisk parenleft parenright underscore plus
+-- braceleft braceright bar colon quotedbl less greater question asciitilde.
+--
+-- Modifier names, which prefix a binding and are what coarse_mod and fine_mod
+-- take, are a third thing again: SHIFT CTRL ALT SUPER. The keysyms above are
+-- the physical keys behind them.
+--
+-- Where the two spellings differ on this keyboard:
+--
+--   caps lock              Multi_key         Multi_key  or  code:66
+--
+-- Omarchy sets kb_options = compose:caps, so that key is Compose, not Caps
+-- Lock. Binding it as Caps_Lock registers and never fires -- measured, six
+-- presses, no session -- while Multi_key and code:66 both work. Anything can
+-- be bound as code:NN, where NN is the evdev code plus 8, but a keycode cannot
+-- be asked about: is_key_down("code:66") answers nothing at all, so a key that
+-- has to be polled reads as released the instant it is pressed.
+--
+-- Keypad digits are KP_0 .. KP_9 only while num lock is on. With it off they
+-- report as KP_Insert KP_End KP_Down KP_Next KP_Left KP_Begin KP_Right KP_Home
+-- KP_Up KP_Prior, which is the pair of names each of those keys carries.
+-- ---------------------------------------------------------------------------

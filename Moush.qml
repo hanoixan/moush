@@ -13,9 +13,9 @@ import Quickshell.Hyprland
 // wheel key turns the whole thing into a scroll wheel.
 //
 // Everything about which key does what, and where each key sits in space, lives
-// in bindings.lua. This file knows actions and coordinates, never keysyms —
-// except where it must ask the compositor whether a key is still down, and even
-// then the spelling comes from there.
+// in implementation.lua. This file knows actions and coordinates, never
+// keysyms — except where it must ask the compositor whether a key is still
+// down, and even then the spelling comes from there.
 //
 // Three facts about Hyprland shape most of what follows:
 //
@@ -42,13 +42,15 @@ Item {
   readonly property bool debug: false
 
   // ---- actions ---------------------------------------------------------------
-  // Grid keys are actions named by index, so bindings.lua can place them at any
-  // coordinates it likes without this file knowing them in advance. The pool is
-  // fixed because GlobalShortcut objects are declared, not created on demand.
+  // Grid keys are actions named by index, so implementation.lua can place them
+  // at any coordinates it likes without this file knowing them in advance. The
+  // pool is fixed because GlobalShortcut objects are declared, not created on
+  // demand.
   readonly property int maxKeys: 48
-  // Three sets: plain, coarse ("c" prefix) and fine ("f"). bindings.lua binds the
-  // same physical key to a different one of these per modifier held, which is how
-  // a press carries its modifier without anything having to be asked or polled.
+  // Three sets: plain, coarse ("c" prefix) and fine ("f"). implementation.lua
+  // binds the same physical key to a different one of these per modifier held,
+  // which is how a press carries its modifier without anything having to be
+  // asked or polled.
   readonly property var gridActions: {
     var out = [], i
     for (i = 0; i < root.maxKeys; i++) out.push("k" + i)
@@ -101,7 +103,7 @@ Item {
   readonly property int scrollStartMs: 250    // before the first scroll repeat
   readonly property int btnMaxMs: 15000       // a lost release must not pin a button
 
-  // ---- settings, from bindings.lua -------------------------------------------
+  // ---- settings, from implementation.lua -------------------------------------
   // A mode may override any of these by naming it; the merge happens in Lua so it
   // is written once. Hyprland keeps its globals across config loads, so a
   // hyprctl reload is enough to apply a change: they are re-read every session.
@@ -119,9 +121,9 @@ Item {
   property real scrollIncreaseTime: 5         // seconds
   property int scrollRepeatMs: 60
 
-  // The grid, as bindings.lua describes it: index -> label and position. The
-  // coordinate space is whatever the config chose; only mashGain relates it to
-  // pixels. x grows rightward and y downward, matching the screen.
+  // The grid, as implementation.lua describes it: index -> label and position.
+  // The coordinate space is whatever the config chose; only mashGain relates
+  // it to pixels. x grows rightward and y downward, matching the screen.
   property var mashLabels: ({})               // index -> key name, for the overlay
   property var mashPos: ({})                  // index -> {x, y}
   property var mashDirs: ({})                 // index -> direction, for lone presses
@@ -130,7 +132,7 @@ Item {
   readonly property var arrowSym: ({ up: "Up", down: "Down",
                                      left: "Left", right: "Right" })
   property string coarseMod: "SHIFT"          // shown in the overlay; the binding
-  property string fineMod: "CTRL"             // itself lives in bindings.lua
+  property string fineMod: "CTRL"             // itself lives in the config
   // The physical keys behind a modifier name, for asking whether one is still down.
   readonly property var modKeysyms: ({ SHIFT: ["Shift_L", "Shift_R"],
                                        CTRL: ["Control_L", "Control_R"],
@@ -212,7 +214,7 @@ Item {
     }
     if (k === "modes") {
       if (v !== "") root.modeNames = v.split(",")
-      // A saved mode that no longer exists -- renamed or deleted in bindings.lua --
+      // A saved mode that no longer exists -- renamed or deleted in the config --
       // would leave the session in a submap with no binds, so fall back and re-fetch.
       if (root.modeNames.indexOf(root.mode) === -1) {
         root.log("mode " + root.mode + " is gone; falling back to " + root.modeNames[0])
@@ -1869,9 +1871,10 @@ Item {
   // The chord's release has to be polled too, which means its keysyms are needed
   // even though Hyprland owns the bind. Either list may hold several syms — any one
   // counts, which is how Super_L/Super_R and the shifted "M" are covered.
-  // Defaults only; bindings.lua is the authority and replaces these as soon as the
-  // settings arrive, which is why they are fetched at startup and not only when a
-  // session opens -- the chord has to be known before the first one.
+  // Defaults only; implementation.lua is the authority and replaces these as
+  // soon as the settings arrive, which is why they are fetched at startup and
+  // not only when a session opens -- the chord has to be known before the
+  // first one.
   property var chordKey: ["m", "M"]
   property var chordMods: ["Super_L", "Super_R"]
   readonly property string chordExpr: {

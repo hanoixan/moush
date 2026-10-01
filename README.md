@@ -51,14 +51,20 @@ before you say yes.
 this step nothing responds:
 
 ```bash
-cat ~/.config/omarchy/plugins/moush/bindings.lua.example >> ~/.config/hypr/bindings.lua
+echo 'require("omarchy.plugins.moush.implementation")()' >> ~/.config/hypr/bindings.lua
 hyprctl reload
 ```
 
-That file is the whole of Moush's configuration: the chord, both layouts, every
-key. It is yours to edit, and Hyprland reloads it on save.
+That one line is the whole of it. Everything Moush needs -- the chord, both
+layouts, every key -- stays inside the plugin, and the line goes in the file
+Hyprland already reads for your own bindings. Hyprland reloads it on save.
 
 Press `Super` + `M` and a red disc should appear.
+
+If you would rather have the configuration notes in front of you,
+`bindings.lua.example` is the same call with the options written out around it, so
+`cat ~/.config/omarchy/plugins/moush/bindings.lua.example >> ~/.config/hypr/bindings.lua`
+works just as well.
 
 ### Updating and removing
 
@@ -67,9 +73,10 @@ omarchy plugin update moush        # fast-forwards, revalidates, rolls back if i
 omarchy plugin remove moush
 ```
 
-An update only touches the plugin, never `~/.config/hypr/bindings.lua`, so your
-layouts survive it. If a release changes the configuration format, the README will
-say so; diff your file against the new `bindings.lua.example` to pick up additions.
+An update only touches the plugin, never `~/.config/hypr/bindings.lua`, so the one
+line and anything you passed to it survive. Because the defaults live in the
+plugin, an update also brings you new ones for everything you did not override --
+there is no file to diff.
 
 ### Installing by hand
 
@@ -313,13 +320,40 @@ Press `F2` and the whole panel redraws for the other layout.
 
 ## Making it yours
 
-Everything lives in `~/.config/hypr/bindings.lua`, in one table. Edit it and run
-`hyprctl reload`; there is nothing to restart and no other file to touch.
-
-Each layout declares its own keys, so the two can share nothing at all:
+The defaults live in the plugin. You change them by passing a table to the same
+call that installed it, in `~/.config/hypr/bindings.lua`:
 
 ```lua
-MOUSH = {
+require("omarchy.plugins.moush.implementation")({
+  coarse_mod = "ALT",
+  idle_ms    = 3000,
+})
+```
+
+Save and run `hyprctl reload`; there is nothing to restart and no other file to
+touch.
+
+Two rules decide what your table does:
+
+- A top-level key replaces that default outright.
+- Under `modes`, a layout that already exists keeps every field you do not mention
+  and takes only the ones you give. A name that does not exist is a new layout, so
+  it has to be complete.
+
+So this moves the scroll key in `mash` and leaves its grid, its directions and its
+buttons exactly as they shipped:
+
+```lua
+require("omarchy.plugins.moush.implementation")({
+  modes = { mash = { wheel = "G" } },
+})
+```
+
+Everything below is the default you would be overriding. Each layout declares its
+own keys, so the two can share nothing at all:
+
+```lua
+{
   carry_ms   = 175,       -- press a new direction this soon and keep your speed
   coarse_mod = "SHIFT",   -- hold for bigger
   fine_mod   = "CTRL",    -- hold for smaller
@@ -403,7 +437,9 @@ Nothing else is affected.
 
 ### Adding a layout
 
-Add another entry under `modes`. `F2` cycles through them in alphabetical order.
+Add an entry under `modes` with a name the plugin does not use. Because there is
+nothing to override, a new name has to carry a whole layout -- at minimum its
+`keys`. `F2` cycles through all of them in alphabetical order.
 
 ### How mashing feels
 
@@ -471,7 +507,7 @@ by accident.
 
 ### The entry chord
 
-`Super + M` is three settings at the top of the table, and they have to agree:
+`Super + M` is three settings, and they have to agree:
 
 ```lua
 chord_mods    = { "Super_L", "Super_R" },
@@ -479,10 +515,9 @@ chord_key     = { "m", "M" },
 chord_hl_bind = "SUPER + M",
 ```
 
-`chord_hl_bind` is what Hyprland acts on, handed straight to the binding at the
-bottom of the block. The other two are the same keys written as X keysyms, which is
-how Moush tells a tap from a hold: it asks whether the chord is still down, and
-Hyprland will not report a release for this kind of binding.
+`chord_hl_bind` is what Hyprland acts on. The other two are the same keys written
+as X keysyms, which is how Moush tells a tap from a hold: it asks whether the chord
+is still down, and Hyprland will not report a release for this kind of binding.
 
 Either list may hold several syms and any one counts, which is how both Super keys
 and the shifted letter are covered. Set `chord_mods` to `{}` for a bare key. Edit,

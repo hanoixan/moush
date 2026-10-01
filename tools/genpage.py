@@ -5,7 +5,7 @@ def settings(m):
                        capture_output=True, text=True).stdout
     return {k:v for k,v in (tok.split("=",1) for tok in t.split() if "=" in tok)}
 
-SRC = open("/home/user/.config/hypr/bindings.lua").read()
+SRC = open("/home/user/.config/omarchy/plugins/moush/implementation.lua").read()
 def inert(mode):
     blk = SRC[SRC.index('["%s"]'%mode if mode!="mash" else "    mash = {"):]
     m = re.search(r'inert\s*=\s*\{([^}]*)\}', blk)
@@ -281,10 +281,12 @@ kbd{background:#1a1d24;border:1px solid #30343d;border-bottom-width:2px;border-r
 <div class="install">
 <div class="ihead">Install &mdash; all three lines</div>
 <div class="cmd"><span class="p">$</span> omarchy plugin add https://github.com/hanoixan/moush --enable</div>
-<div class="cmd"><span class="p">$</span> cat ~/.config/omarchy/plugins/moush/bindings.lua.example &gt;&gt; ~/.config/hypr/bindings.lua</div>
+<div class="cmd"><span class="p">$</span> echo 'require("omarchy.plugins.moush.implementation")()' &gt;&gt; ~/.config/hypr/bindings.lua</div>
 <div class="cmd"><span class="p">$</span> hyprctl reload</div>
 <p class="inote">Moush ships no bindings of its own. Stop after the first line and it
-installs, enables, and does nothing at all.</p>
+installs, enables, and does nothing at all. The second line is the whole of it:
+one call, and every layout and default stays inside the plugin where an update can
+reach it.</p>
 </div>
 
 <h2>Keymap &mdash; mash</h2>
@@ -304,9 +306,9 @@ with <code>mouse_arrows = false</code>.</p>
 
 @@QUICK@@
 
-<p class="foot">Every key shown is read from the running configuration in
-<code>~/.config/hypr/bindings.lua</code>. Edit that file, reload, and both layouts
-change with it.</p>
+<p class="foot">Every key shown is read from the running configuration. Pass a table
+to that one call to change any of it &mdash; a layout that already exists takes only
+the fields you name &mdash; then reload.</p>
 </div></body></html>
 """
 

@@ -59,7 +59,11 @@ MOUSH = {
         { "M", 0.5, 6 }, { "comma", 1.5, 6 }, { "period", 2.5, 6 }, { "slash", 3.5, 6 },
       },
 
-      -- Struck alone, these steer instead of contributing to a sweep.
+      -- Struck alone, these steer instead of contributing to a sweep. Only then:
+      -- during a sweep a key is just a point, and the direction comes from the
+      -- gesture. The two lower diagonals are chosen for finger reach rather than
+      -- for where they sit, so they do not match the grid geometry and are not
+      -- meant to.
       dirs = {
         I = "up", K = "down", J = "left", L = "right",
         ["8"] = "upleft", ["9"] = "upright", U = "downleft", O = "downright",
@@ -88,7 +92,11 @@ MOUSH = {
         { "Z", 0.5, 6 }, { "X", 1.5, 6 }, { "C", 2.5, 6 }, { "V", 3.5, 6 },
       },
 
-      -- Struck alone, these steer instead of contributing to a sweep.
+      -- Struck alone, these steer instead of contributing to a sweep. Only then:
+      -- during a sweep a key is just a point, and the direction comes from the
+      -- gesture. The two lower diagonals are chosen for finger reach rather than
+      -- for where they sit, so they do not match the grid geometry and are not
+      -- meant to.
       dirs = {
         W = "up", S = "down", A = "left", D = "right",
         ["2"] = "upleft", ["3"] = "upright", Q = "downleft", E = "downright",

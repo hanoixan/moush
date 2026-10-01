@@ -107,6 +107,11 @@ Eight keys steer. In `mash` they are `I` up, `K` down, `J` left, `L` right, with
 `Q` `E`. The rest of the grid has no direction of its own and does nothing when
 tapped alone; those keys exist for mashing.
 
+The two lower diagonals are picked for where the fingers fall rather than for where
+the keys sit, so `U` means down-left from a key that is physically up-left. That
+only applies to a key struck on its own: inside a sweep every key is just a point
+and the direction comes from the gesture, so nothing is inconsistent.
+
 **One tap is a small step.** Eight pixels, or six on each axis for a diagonal.
 
 **Two modifiers change the size of everything.** Hold **Shift** and a tap moves 32

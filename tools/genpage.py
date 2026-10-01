@@ -215,6 +215,14 @@ kbd{background:#1a1d24;border:1px solid #30343d;border-bottom-width:2px;border-r
  padding:0 5px;font:inherit;font-size:12px;color:var(--ink)}
 .cols{columns:2;column-gap:34px}
 .cols section{break-inside:avoid;margin:0 0 20px}
+.install{border:1px solid #2a2f38;border-left:4px solid var(--orange);
+ background:#0c0e12;border-radius:6px;padding:14px 16px;margin:0 0 34px}
+.ihead{font-size:11px;letter-spacing:.26em;text-transform:uppercase;
+ color:var(--orange);margin-bottom:9px}
+.cmd{font-size:13px;color:#cfd6c8;white-space:nowrap;overflow-x:auto;
+ padding:2px 0;line-height:1.5}
+.cmd .p{color:#4a5a46;margin-right:9px}
+.inote{font-size:12px;color:var(--dim);margin:9px 0 0}
 .modename{display:flex;align-items:baseline;gap:12px;margin:26px 0 10px}
 .modename .n{font-size:17px;color:var(--orange);letter-spacing:.1em}
 .modename .d{font-size:12px;color:var(--dim)}
@@ -253,6 +261,15 @@ kbd{background:#1a1d24;border:1px solid #30343d;border-bottom-width:2px;border-r
 <div class="screen">@@HERO@@</div>
 <div class="tag">Moush</div>
 <p class="sub">Move it. Click it. Mash it.</p>
+
+<div class="install">
+<div class="ihead">Install &mdash; all three lines</div>
+<div class="cmd"><span class="p">$</span> omarchy plugin add https://github.com/hanoixan/moush --enable</div>
+<div class="cmd"><span class="p">$</span> cat ~/.config/omarchy/plugins/moush/bindings.lua.example &gt;&gt; ~/.config/hypr/bindings.lua</div>
+<div class="cmd"><span class="p">$</span> hyprctl reload</div>
+<p class="inote">Moush ships no bindings of its own. Stop after the first line and it
+installs, enables, and does nothing at all.</p>
+</div>
 
 <h2>Keymap &mdash; mash</h2>
 <div class="modename"><span class="n">mash</span>

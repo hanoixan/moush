@@ -39,15 +39,52 @@ needed on Omarchy. Do not hand-write a udev rule; the packaged one is enough.
 ## Install
 
 ```bash
+omarchy plugin add https://github.com/hanoixan/moush --enable
+```
+
+That clones the repo, validates the manifest, installs it as `moush`, and turns it
+on. Omarchy will warn you first that plugins run unsandboxed inside its shell
+process, which is true of every plugin and worth taking seriously: read the source
+before you say yes.
+
+**Then give it its keys.** The plugin ships with no bindings of its own, so until
+this step nothing responds:
+
+```bash
+cat ~/.config/omarchy/plugins/moush/bindings.lua.example >> ~/.config/hypr/bindings.lua
+hyprctl reload
+```
+
+That file is the whole of Moush's configuration: the chord, both layouts, every
+key. It is yours to edit, and Hyprland reloads it on save.
+
+Press `Super` + `M` and a red disc should appear.
+
+### Updating and removing
+
+```bash
+omarchy plugin update moush        # fast-forwards, revalidates, rolls back if it fails
+omarchy plugin remove moush
+```
+
+An update only touches the plugin, never `~/.config/hypr/bindings.lua`, so your
+layouts survive it. If a release changes the configuration format, the README will
+say so; diff your file against the new `bindings.lua.example` to pick up additions.
+
+### Installing by hand
+
+If you would rather not hand a git URL to the installer, clone it yourself. The
+folder has to be named for the plugin id, which is `moush`:
+
+```bash
 git clone https://github.com/hanoixan/moush ~/.config/omarchy/plugins/moush
 omarchy plugin validate ~/.config/omarchy/plugins/moush
 omarchy-shell shell rescanPlugins
 omarchy plugin enable moush
 ```
 
-The folder must be named `moush`. Then append the contents of
-`bindings.lua.example` to `~/.config/hypr/bindings.lua` and run `hyprctl reload`.
-That file holds every key Moush uses, and it is yours to edit.
+`omarchy plugin update` still works on a hand-cloned copy, since it is an ordinary
+git checkout with a remote.
 
 ## Turning it on
 

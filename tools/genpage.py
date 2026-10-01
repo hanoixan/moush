@@ -204,7 +204,8 @@ body{margin:0;background:var(--bg);color:var(--ink);
  background:repeating-linear-gradient(to bottom,rgba(0,0,0,.42) 0 2px,transparent 2px 4px)}
 .tag{text-align:center;color:var(--orange);letter-spacing:.42em;font-size:12px;
  text-transform:uppercase;margin:14px 0 2px}
-.sub{text-align:center;color:var(--dim);font-size:13px;margin:0 0 30px}
+.sub{text-align:center;color:#b9b2a3;font-size:17px;letter-spacing:.14em;
+ margin:0 0 32px}
 h2{font-size:13px;letter-spacing:.3em;text-transform:uppercase;color:var(--yellow);
  border-bottom:2px solid var(--line);padding-bottom:8px;margin:40px 0 18px}
 h3{font-size:13px;color:var(--cyan);margin:0 0 6px;letter-spacing:.06em}
@@ -251,7 +252,7 @@ kbd{background:#1a1d24;border:1px solid #30343d;border-bottom-width:2px;border-r
 
 <div class="screen">@@HERO@@</div>
 <div class="tag">Moush</div>
-<p class="sub">Move, click, drag and scroll the pointer without touching a mouse.</p>
+<p class="sub">Move it. Click it. Mash it.</p>
 
 <h2>Keymap &mdash; mash</h2>
 <div class="modename"><span class="n">mash</span>

@@ -281,85 +281,114 @@ for name, cfg in pairs(MOUSH.modes) do moush_mode(name, cfg) end
 --   chord_hl_bind                    keysym, with prefixes
 --   coarse_mod, fine_mod             prefix
 --
--- description              keysym            prefix
--- letters                  a .. z            -        either case in a binding
--- digits                   0 .. 9            -
--- function keys            F1 .. F12         -
--- space bar                space             -
--- tab                      Tab               -
--- enter                    Return            -
--- backspace                BackSpace         -
--- escape                   Escape            -
--- delete                   Delete            -
--- insert                   Insert            -
+-- A * marks a key your keyboard may not have. The name is still valid and will
+-- bind without complaint; nothing will ever press it.
 --
--- backtick / tilde         grave             -
--- hyphen / underscore      minus             -
--- equals / plus            equal             -
--- left square bracket      bracketleft       -
--- right square bracket     bracketright      -
--- backslash / pipe         backslash         -
--- semicolon / colon        semicolon         -
--- apostrophe / quote       apostrophe        -
--- comma / less than        comma             -
--- period / greater than    period            -
--- slash / question         slash             -
+-- description                keysym             prefix
+-- letters, either case       a .. z             -
+-- digits                     0 .. 9             -
+-- backtick / tilde           grave              -
+-- hyphen / underscore        minus              -
+-- equals / plus              equal              -
+-- left square bracket        bracketleft        -
+-- right square bracket       bracketright       -
+-- backslash / pipe           backslash          -
+-- semicolon / colon          semicolon          -
+-- apostrophe / quote         apostrophe         -
+-- comma / less than          comma              -
+-- period / greater than      period             -
+-- slash / question           slash              -
+-- space bar                  space              -
+-- tab                        Tab                -
+-- enter                      Return             -
+-- backspace                  BackSpace          -
+-- escape                     Escape             -
 --
--- left arrow               Left              -
--- right arrow              Right             -
--- up arrow                 Up                -
--- down arrow               Down              -
--- home                     Home              -
--- end                      End               -
--- page up                  Prior             -
--- page down                Next              -
+-- left shift                 Shift_L            SHIFT
+-- right shift                Shift_R            SHIFT
+-- left control               Control_L          CTRL
+-- right control              Control_R          CTRL
+-- left alt                   Alt_L              ALT
+-- right alt                  Alt_R              ALT
+-- left super                 Super_L            SUPER
+-- right super                Super_R            SUPER
+-- caps lock, Compose here    Multi_key          CAPS
 --
--- left shift               Shift_L           SHIFT
--- right shift              Shift_R           SHIFT
--- left control             Control_L         CTRL
--- right control            Control_R         CTRL
--- left alt                 Alt_L             ALT
--- right alt                Alt_R             ALT
--- left super               Super_L           SUPER
--- right super              Super_R           SUPER
--- menu / context           Menu              -
+-- arrow keys                 Left Right Up Down -
+-- delete                     Delete             -
+-- insert *                   Insert             -
+-- home *                     Home               -
+-- end *                      End                -
+-- page up *                  Prior              -
+-- page down *                Next               -
 --
--- print screen             Print             -
--- scroll lock              Scroll_Lock       -
--- pause / break            Pause             -
--- num lock                 Num_Lock          -
+-- function keys              F1 .. F12          -
+-- more function keys *       F19 F23 F24        -   F13 .. F18 report as XF86
+-- menu / context *           Menu               -
+-- print screen *             Print              -
+-- scroll lock *              Scroll_Lock        -
+-- pause / break *            Pause              -
+-- num lock *                 Num_Lock           -
 --
--- keypad divide            KP_Divide         -
--- keypad multiply          KP_Multiply       -
--- keypad minus             KP_Subtract       -
--- keypad plus              KP_Add            -
--- keypad enter             KP_Enter          -
--- keypad 0 (num lock on)   KP_0              -
--- keypad 1 .. 9            KP_1 .. KP_9      -
--- keypad period            KP_Decimal        -
+-- keypad digits *            KP_0 .. KP_9       -
+-- keypad divide *            KP_Divide          -
+-- keypad multiply *          KP_Multiply        -
+-- keypad minus *             KP_Subtract        -
+-- keypad plus *              KP_Add             -
+-- keypad enter *             KP_Enter           -
+-- keypad period *            KP_Decimal         -
+-- keypad equals *            KP_Equal           -
+-- with num lock off that block reports as KP_Insert KP_End KP_Down KP_Next
+-- KP_Left KP_Begin KP_Right KP_Home KP_Up KP_Prior, and the period as KP_Delete
 --
--- A prefix has aliases: CTRL and CONTROL are one, ALT and MOD1 are one, and
--- SUPER, WIN, LOGO and MOD4 are all the same. CAPS is a prefix too, though on
--- this keyboard that key is Compose rather than a lock.
+-- AltGr, non-US layouts *    ISO_Level3_Shift   -
+-- level 5 shift *            ISO_Level5_Shift   -
+-- extra key by left shift *  less               -
+--
+-- Japanese and Korean *      Katakana Hiragana Hiragana_Katakana Henkan_Mode
+--                           Muhenkan Hangul Hangul_Hanja
+--
+-- Media, laptop and application keys, all of them * and none of them taking a
+-- prefix. Whether any given one exists depends entirely on the keyboard:
+--   Cancel Find Help Linefeed Redo SunFront SunProps Undo XF86AudioBassBoost
+--   XF86AudioForward XF86AudioMedia XF86AudioMicMute XF86AudioMute
+--   XF86AudioNext XF86AudioPause XF86AudioPlay XF86AudioPreset XF86AudioPrev
+--   XF86AudioRecord XF86AudioRewind XF86AudioStop XF86Back XF86Battery
+--   XF86Bluetooth XF86BrightnessAuto XF86Calculator XF86Close XF86Copy
+--   XF86Cut XF86DOS XF86Display XF86DisplayOff XF86Documents XF86Eject
+--   XF86Explorer XF86Favorites XF86Finance XF86Forward XF86Game XF86Go
+--   XF86HomePage XF86KbdBrightnessDown XF86KbdBrightnessUp XF86KbdLightOnOff
+--   XF86Launch1 XF86Launch2 XF86Launch3 XF86Launch4 XF86Launch5 XF86Launch6
+--   XF86Launch7 XF86Launch8 XF86Launch9 XF86LaunchA XF86LaunchB XF86Mail
+--   XF86MailForward XF86MenuKB XF86Messenger XF86MonBrightnessCycle
+--   XF86MonBrightnessDown XF86MonBrightnessUp XF86MyComputer XF86New
+--   XF86Next_VMode XF86Open XF86Paste XF86Phone XF86PowerOff XF86Prev_VMode
+--   XF86RFKill XF86Reload XF86Reply XF86RotateWindows XF86Save
+--   XF86ScreenSaver XF86ScrollDown XF86ScrollUp XF86Search XF86Send XF86Shop
+--   XF86Sleep XF86Suspend XF86TaskPane XF86Tools XF86TouchpadOn
+--   XF86TouchpadToggle XF86UWB XF86WLAN XF86WWAN XF86WWW XF86WakeUp
+--   XF86WebCam XF86Xfer plusminus
+--
+-- Volume up and down are absent from this keymap entirely, so unlike the names
+-- above they cannot be bound at all. XF86AudioMute is present.
 --
 -- The shifted name of a key is a different keysym and binds only with the shift
 -- held: write comma, not less. Those are exclam at numbersign dollar percent
 -- asciicircum ampersand asterisk parenleft parenright underscore plus braceleft
 -- braceright bar colon quotedbl less greater question asciitilde.
 --
--- The one key whose binding is not simply its keysym:
+-- A prefix has aliases: CTRL and CONTROL are one, ALT and MOD1 are one, and
+-- SUPER, WIN, LOGO and MOD4 are all the same.
 --
---   caps lock              Multi_key         bind it as Multi_key or code:66
+-- Caps lock is the one key whose binding is not simply its keysym. Omarchy sets
+-- kb_options = compose:caps, so it is Compose: it reports as Multi_key, and a
+-- binding written as Caps_Lock registers and never fires -- measured, six
+-- presses, no session. Bind it as Multi_key or as code:66.
 --
--- Omarchy sets kb_options = compose:caps, so that key is Compose, not Caps
--- Lock. Binding it as Caps_Lock registers and never fires -- measured, six
--- presses, no session -- while Multi_key and code:66 both work. Anything can be
--- bound as code:NN, where NN is the evdev code plus 8, but a keycode cannot be
--- asked about: is_key_down("code:66") answers nothing at all, so a key that has
--- to be polled reads as released the instant it is pressed. That rules a keycode
--- out for wheel, for buttons, and for anything named in dirs.
+-- Anything can be bound as code:NN, where NN is the evdev code plus 8, but a
+-- keycode cannot be asked about: is_key_down("code:66") answers nothing at all,
+-- so a key that has to be polled reads as released the instant it is pressed.
+-- That rules a keycode out for wheel, for buttons, and for anything in dirs.
 --
--- Keypad digits are KP_0 .. KP_9 only while num lock is on. With it off they
--- report as KP_Insert KP_End KP_Down KP_Next KP_Left KP_Begin KP_Right KP_Home
--- KP_Up KP_Prior, which is the pair of names each of those keys carries.
+-- The Fn key is handled by the keyboard itself and never reaches software.
 -- ---------------------------------------------------------------------------

@@ -1,11 +1,13 @@
-import subprocess, html, re
+import subprocess, html, re, os
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def settings(m):
     t = subprocess.run(["hyprctl","repl",'return MOUSH_SETTINGS("%s")'%m],
                        capture_output=True, text=True).stdout
     return {k:v for k,v in (tok.split("=",1) for tok in t.split() if "=" in tok)}
 
-SRC = open("/home/user/.config/omarchy/plugins/moush/implementation.lua").read()
+SRC = open(os.path.join(REPO, "implementation.lua")).read()
 def inert(mode):
     blk = SRC[SRC.index('["%s"]'%mode if mode!="mash" else "    mash = {"):]
     m = re.search(r'inert\s*=\s*\{([^}]*)\}', blk)
@@ -325,5 +327,5 @@ out = (doc.replace("@@HERO@@", hero())
           .replace("@@KB2@@", keyboard("mash_lh"))
           .replace("@@LEGEND@@", leg)
           .replace("@@QUICK@@", QUICK))
-open("/home/user/.config/omarchy/plugins/moush/docs/moush.html","w").write(out)
+open(os.path.join(REPO, "docs", "moush.html"), "w").write(out)
 print("written")

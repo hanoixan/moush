@@ -25,8 +25,9 @@ click are at or near an edge, so getting there stops being the slow part.
 
 ## What you need
 
-Moving the pointer needs nothing extra. Clicking and scrolling need `ydotool`,
-because a Wayland application is not allowed to press mouse buttons by itself:
+**Moush requires `ydotool`.** Moving the pointer needs nothing extra, but
+**clicking, dragging and scrolling will not work without it**, because a Wayland
+application is not allowed to press mouse buttons by itself.
 
 ```bash
 sudo pacman -S ydotool
@@ -36,7 +37,22 @@ systemctl --user enable --now ydotool
 Then reboot once, or run `sudo modprobe uinput` to skip the reboot. Nothing else is
 needed on Omarchy. Do not hand-write a udev rule; the packaged one is enough.
 
+Install it *before* the plugin. If it is missing or its service is not running,
+Moush still installs and still moves the pointer, and every click and scroll
+silently does nothing -- no error, no warning, nothing in the log. It is the one
+failure that looks like a bug in Moush and is not.
+
 ## Install
+
+**First, `ydotool`**, or clicking and scrolling will not work. See
+[What you need](#what-you-need) above; in short:
+
+```bash
+sudo pacman -S ydotool
+systemctl --user enable --now ydotool
+```
+
+**Then the plugin.**
 
 ```bash
 omarchy plugin add https://github.com/hanoixan/moush --enable
@@ -80,8 +96,9 @@ there is no file to diff.
 
 ### Installing by hand
 
-If you would rather not hand a git URL to the installer, clone it yourself. The
-folder has to be named for the plugin id, which is `moush`:
+If you would rather not hand a git URL to the installer, clone it yourself. This
+replaces the `omarchy plugin add` step only -- `ydotool` and the binding line are
+still needed. The folder has to be named for the plugin id, which is `moush`:
 
 ```bash
 git clone https://github.com/hanoixan/moush ~/.config/omarchy/plugins/moush

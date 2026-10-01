@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "hanoixan",
   "license": "MIT",
-  "description": "Keyboard-driven pointer control: move, click and scroll without a mouse",
+  "description": "Keyboard-driven pointer control: move, click and scroll without a mouse. Requires ydotool for clicking and scrolling.",
   "kinds": [
     "overlay"
   ],

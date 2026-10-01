@@ -34,6 +34,13 @@ kbd{background:#1a1d24;border:1px solid #30343d;border-bottom-width:2px;border-r
  padding:2px 0;line-height:1.5}
 .cmd .p{color:#4a5a46;margin-right:9px}
 .inote{font-size:12px;color:var(--dim);margin:9px 0 0}
+.istep{font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+ color:#8a9a86;margin:14px 0 7px}
+.istep:first-of-type{margin-top:0}
+.warn{border:1px solid #5a3a22;border-left:4px solid var(--yellow);
+ background:#140f09;border-radius:6px;padding:12px 15px;margin:0 0 16px}
+.warn b{color:var(--yellow);letter-spacing:.06em}
+.warn p{margin:6px 0 0;font-size:12.5px;color:#bfb6a4;line-height:1.65}
 .modename{display:flex;align-items:baseline;gap:12px;margin:26px 0 10px}
 .modename .n{font-size:17px;color:var(--orange);letter-spacing:.1em}
 .modename .d{font-size:12px;color:var(--dim)}
@@ -65,6 +72,8 @@ kbd{background:#1a1d24;border:1px solid #30343d;border-bottom-width:2px;border-r
 .r-inert .cap{color:#3a3c42} .r-inert .note{color:#303238}
 .arrows{font-size:12px;color:var(--dim);margin:11px 0 0}
 .arrows .ar{color:var(--green)}
+code{font:inherit;color:#cfd6c8;background:#151a21;
+ border:1px solid #222832;border-radius:3px;padding:0 5px}
 .arrows code{color:#9aa39a}
 .legend{display:flex;flex-wrap:wrap;gap:8px 20px;margin:12px 0 0;font-size:11px}
 .legend span{display:flex;align-items:center;gap:7px;color:var(--dim)}
@@ -77,15 +86,33 @@ kbd{background:#1a1d24;border:1px solid #30343d;border-bottom-width:2px;border-r
 <div class="tag">Moush</div>
 <p class="sub">Move it. Click it. Mash it.</p>
 
+<div class="warn">
+<b>Requires ydotool.</b>
+<p>Moving the pointer needs nothing extra, but <b>clicking, dragging and scrolling
+will not work without <code>ydotool</code></b> &mdash; a Wayland application is not
+permitted to press mouse buttons by itself. Skip it and Moush installs, the disc
+appears, the pointer moves, and every click silently does nothing: there is no
+error, no warning, and nothing in the log. Install it first.</p>
+</div>
+
 <div class="install">
-<div class="ihead">Install &mdash; all three lines</div>
+<div class="ihead">Install</div>
+
+<div class="istep">1 &middot; ydotool, which does the clicking</div>
+<div class="cmd"><span class="p">$</span> sudo pacman -S ydotool</div>
+<div class="cmd"><span class="p">$</span> systemctl --user enable --now ydotool</div>
+<p class="inote">Then reboot once, or run <code>sudo modprobe uinput</code> to skip the
+reboot. Do not hand-write a udev rule; the packaged one is enough.</p>
+
+<div class="istep">2 &middot; the plugin</div>
 <div class="cmd"><span class="p">$</span> omarchy plugin add https://github.com/hanoixan/moush --enable</div>
+
+<div class="istep">3 &middot; its keys</div>
 <div class="cmd"><span class="p">$</span> echo 'require("omarchy.plugins.moush.implementation")()' &gt;&gt; ~/.config/hypr/bindings.lua</div>
 <div class="cmd"><span class="p">$</span> hyprctl reload</div>
-<p class="inote">Moush ships no bindings of its own. Stop after the first line and it
-installs, enables, and does nothing at all. The second line is the whole of it:
-one call, and every layout and default stays inside the plugin where an update can
-reach it.</p>
+<p class="inote">Moush ships no bindings of its own, so stop after step 2 and it
+installs, enables, and does nothing at all. That one line is the whole of it: every
+layout and default stays inside the plugin where an update can reach it.</p>
 </div>
 
 <h2>Keymap &mdash; mash</h2>

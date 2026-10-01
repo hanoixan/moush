@@ -1,3 +1,7 @@
+-- Moush needs ydotool installed and running, or clicking, dragging and
+-- scrolling do nothing at all -- silently. The pointer still moves without it.
+--   sudo pacman -S ydotool && systemctl --user enable --now ydotool
+--
 -- Moush: SUPER + M enters. A short press starts the session when the chord is
 -- released and it ends after idle_ms; holding it past 500ms starts the session
 -- right then and latches until you hit SUPER + M again.

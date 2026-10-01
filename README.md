@@ -90,7 +90,6 @@ layout:
 ```
 F1   show or hide the display
 F2   switch layout
-F3   next strategy
 
 Shift  hold  bigger:  32px a tap, 4x sweep speed, and a swipe goes to the next edge
 Ctrl   hold  smaller:  1px a tap, an eighth the sweep speed, and a shorter roll
@@ -291,7 +290,6 @@ MOUSH = {
   -- Not part of a layout, so set once rather than in each one.
   cycle    = "F2",        -- next layout
   debug    = "F1",        -- show or hide the display
-  strategy = "F3",        -- next strategy
 
   modes = {
     mash = {
@@ -468,8 +466,8 @@ and typing afterwards was unaffected, so the compose mapping costs nothing here.
 
 ### Where a keycode works, and where it does not
 
-`code:NN` binds like any other key, so it is fine for `inert`, for `cycle`, `debug`
-and `strategy`, and for a grid position in `keys`.
+`code:NN` binds like any other key, so it is fine for `inert`, for `cycle` and
+`debug`, and for a grid position in `keys`.
 
 It is **not** fine for `wheel`, for `buttons`, or for any key named in `dirs`.
 Those are the ones Moush has to ask about while they are held, because Hyprland

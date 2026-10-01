@@ -48,7 +48,6 @@ def roles_for(mode):
     r[d["wheel"]] = ("wheel","hold: scroll")
     r[d["debug"]] = ("glob","overlay")
     r[d["cycle"]] = ("glob","switch layout")
-    r[d["strategy"]] = ("glob","strategy")
     for k in inert(mode): r[k] = ("inert","blocked")
     for k in ("Shift_L","Shift_R"): r[k] = ("mod","coarse")
     for k in ("Control_L","Control_R"): r[k] = ("mod","fine")
@@ -184,7 +183,7 @@ LEGEND = [("steer","steers &mdash; and part of the grid"),
           ("btn","mouse button"),
           ("wheel","hold to scroll"),
           ("mod","size modifier"),
-          ("glob","overlay / layout / strategy"),
+          ("glob","overlay and layout"),
           ("chord","opens a session"),
           ("inert","swallowed, so a stray reach types nothing")]
 
